@@ -1187,13 +1187,15 @@ std::vector<uint32_t> dacScanLocal(localArgs *la, uint32_t ohN, uint32_t dacSele
     unsigned int nDacValues = (dacMax-dacMin+1)/dacStep;
     std::vector<uint32_t> vec_dacScanData(oh::VFATS_PER_OH*nDacValues); //Each element has bits [0:7] as the current dacValue, and bits [8:17] as the ADC read back value
 
+    //Block L1A's then take VFATs out of run mode
+    writeReg(la, "GEM_AMC.TTC.CTRL.L1A_ENABLE", 0x0);
+    broadcastWriteLocal(la, ohN, "CFG_RUN", 0x0, mask);
+
     //Configure the DAC Monitoring on all the VFATs
     configureVFAT3DacMonitorLocal(la, ohN, mask, dacSelect);
 
-    //Take the VFATs out of slow control only mode
-    writeReg(la, "GEM_AMC.GEM_SYSTEM.VFAT3.SC_ONLY_MODE", 0x0);
-
     //Set the VFATs into Run Mode
+    writeReg(la, "GEM_AMC.GEM_SYSTEM.VFAT3.SC_ONLY_MODE", 0x0);
     broadcastWriteLocal(la, ohN, "CFG_RUN", 0x1, mask);
     LOGGER->log_message(LogManager::INFO, stdsprintf("VFATs not in 0x%x were set to run mode", mask));
     std::this_thread::sleep_for(std::chrono::seconds(1)); //I noticed that DAC values behave weirdly immediately after VFAT is placed in run mode (probably voltage/current takes a moment to stabalize)

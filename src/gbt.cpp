@@ -73,14 +73,34 @@ bool scanGBTPhasesLocal(localArgs *la, const uint32_t ohN, const uint32_t N, con
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
             // Check the VFAT status
+            slowCtrlErrCntVFAT vfatErrs;
             for (uint32_t vfatN = 0; vfatN < oh::VFATS_PER_OH; vfatN++) {
-                const bool linkGood = (readReg(la, stdsprintf("GEM_AMC.OH_LINKS.OH%hu.VFAT%hu.LINK_GOOD", ohN, vfatN)) == 1);
-                const bool syncErrCnt = (readReg(la, stdsprintf("GEM_AMC.OH_LINKS.OH%hu.VFAT%hu.SYNC_ERR_CNT", ohN, vfatN)) == 0);
-                const bool cfgRun = (readReg(la, stdsprintf("GEM_AMC.OH.OH%hu.GEB.VFAT%hu.CFG_RUN", ohN, vfatN)) != 0xdeaddead);
+                // check SYNC_ERR_CNT
+                if (readReg(la, stdsprintf("GEM_AMC.OH_LINKS.OH%hu.VFAT%hu.SYNC_ERR_CNT", ohN, vfatN)) != 0){
+                    continue;
+                }
 
-                // If no errors, the phase is good
-                if (linkGood && syncErrCnt && cfgRun)
-                    results[vfatN][phase]++;
+                // check CFG_RUN
+                vfatErrs = repeatedRegReadLocal(la, stdsprintf("GEM_AMC.OH.OH%hu.GEB.VFAT%hu.CFG_RUN", ohN, vfatN), true, 10);
+                if (vfatErrs.sum != 0){
+                    continue;
+                }
+
+                // check HW_ID_VER
+                vfatErrs = repeatedRegReadLocal(la, stdsprintf("GEM_AMC.OH.OH%hu.GEB.VFAT%hu.HW_ID_VER", ohN, vfatN), true, 10);
+                if (vfatErrs.sum != 0){
+                    continue;
+                }
+
+                // check HW_ID
+                vfatErrs = repeatedRegReadLocal(la, stdsprintf("GEM_AMC.OH.OH%hu.GEB.VFAT%hu.HW_ID", ohN, vfatN), true, 10);
+                if (vfatErrs.sum != 0){
+                    continue;
+                }
+
+                //if (syncErrCnt && cfgRun && hwID && hwIDVer)
+                //    results[vfatN][phase]++;
+                results[vfatN][phase]++;
             }
         }
     }
@@ -154,7 +174,7 @@ void writeGBTPhase(const RPCMsg *request, RPCMsg *response)
 
 bool writeGBTPhaseLocal(localArgs *la, const uint32_t ohN, const uint32_t vfatN, const uint8_t phase)
 {
-    LOGGER->log_message(LogManager::INFO, stdsprintf("Writing the VFAT #%u phase of OH #%u.", vfatN, ohN));
+    LOGGER->log_message(LogManager::INFO, stdsprintf("Writing %u to the VFAT #%u phase of OH #%u.", phase, vfatN, ohN));
 
     // ohN check
     const uint32_t ohMax = readReg(la, "GEM_AMC.GEM_SYSTEM.CONFIG.NUM_OF_OH");

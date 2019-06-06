@@ -382,6 +382,37 @@ uint32_t readBlock(const uint32_t& regAddr, uint32_t* result, const uint32_t& si
   return 0;
 }
 
+slowCtrlErrCntVFAT repeatedRegReadLocal(localArgs * la, const std::string & regName, bool breakOnFailure, uint32_t nReads)
+{
+    //Create the output error counter container
+    slowCtrlErrCntVFAT vfatErrs;
+
+    //Issue a link reset to reset counters under GEM_AMC.SLOW_CONTROL.VFAT3
+    writeReg(la,"GEM_AMC.GEM_SYSTEM.CTRL.LINK_RESET", 0x1);
+    std::this_thread::sleep_for(std::chrono::microseconds(90));
+
+    for (uint32_t i=0; i<nReads; i++){
+        //Any time a bus error occurs for VFAT slow control the TIMEOUT_ERROR_CNT will increment
+        bool goodRead = (readReg(la, regName) != 0xdeaddead);
+        std::this_thread::sleep_for(std::chrono::microseconds(20));
+
+        if(!goodRead && breakOnFailure){
+            break;
+        }
+    }
+
+    std::string baseReg     = "GEM_AMC.SLOW_CONTROL.VFAT3.";
+    vfatErrs.crc            = readReg(la,baseReg+"CRC_ERROR_CNT");
+    vfatErrs.packet         = readReg(la,baseReg+"PACKET_ERROR_CNT");
+    vfatErrs.bitstuffing    = readReg(la,baseReg+"BITSTUFFING_ERROR_CNT");
+    vfatErrs.timeout        = readReg(la,baseReg+"TIMEOUT_ERROR_CNT");
+    vfatErrs.axi_strobe     = readReg(la,baseReg+"AXI_STROBE_ERROR_CNT");
+    vfatErrs.nTransactions  = readReg(la,baseReg+"TRANSACTION_CNT");
+    vfatErrs.sumErrors();
+
+    return vfatErrs;
+} //End repeatedRegReadLocal
+
 void writeReg(localArgs * la, const std::string & regName, uint32_t value)
 {
   lmdb::val key, db_res;

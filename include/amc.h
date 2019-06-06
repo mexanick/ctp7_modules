@@ -37,9 +37,18 @@ void getOHVFATMask(const RPCMsg *request, RPCMsg *response);
  *  \brief As getOHVFATMask(...) but for all optical links specified in ohMask on the AMC
  *  \details Here the RPCMsg request should have a "ohMask" word which specifies which OH's to read from, this is a 12 bit number where a 1 in the n^th bit indicates that the n^th OH should be read back.  Additionally there should be a "ohVfatMaskArray" which is an array of size 12 where each element is the standard vfatMask for OH specified by the array index.
  *  \param request RPC request message
- *  \param response RPC responce message
+ *  \param response RPC response message
  */
 void getOHVFATMaskMultiLink(const RPCMsg *request, RPCMsg *response);
+
+/*! \fn void repeatedRegRead(const RPCMsg *request, RPCMsg *response)
+ *  \brief Reads a list of registers for nReads and then counts the number of slow control errors observed.
+ *  \details the RPC request is expected to have the following keys: "regList" which stores a std::vector<std::string> of registers to be read, note the full node name is required; "breakOnFailure" which will indicate if a register in regList should stop being read after the first failure before nReads is reached (see next); "nReads" the number of times each register in "regList" is read.
+ *  \details the RPC response will have the following keys: "CRC_ERROR_CNT", "PACKET_ERROR_CNT", "BITSTUFFING_ERROR_CNT", "TIMEOUT_ERROR_CNT", "AXI_STROBE_ERROR_CNT", and "TRANSACTION_CNT" which correspond to the counters under the node "GEM_AMC.SLOW_CONTROL.VFAT3."; additionally there will be one final key "SUM" which is the sum of all counters (except TRANSACTION_CNT).
+ *  \param request RPC request message
+ *  \param response RPC response message
+ */
+void repeatedRegRead(const RPCMsg *request, RPCMsg *response);
 
 /*! \fn std::vector<uint32_t> sbitReadOutLocal(localArgs *la, uint32_t ohN, uint32_t acquireTime, bool *maxNetworkSizeReached)
  *  \brief reads out sbits from optohybrid ohN for a number of seconds given by acquireTime and returns them to the user.

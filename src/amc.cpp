@@ -112,6 +112,31 @@ void getOHVFATMaskMultiLink(const RPCMsg *request, RPCMsg *response)
     rtxn.abort();
 } //End getOHVFATMaskMultiLink(...)
 
+void repeatedRegRead(const RPCMsg *request, RPCMsg *response)
+{
+    GETLOCALARGS(response);
+
+    bool breakOnFailure = request->get_word("breakOnFailure");
+    uint32_t nReads     = request->get_word("nReads");
+
+    const std::vector<std::string> vec_regList = request->get_string_array("regList");
+    slowCtrlErrCntVFAT vfatErrs;
+    for (auto const & regIter : vec_regList){
+        LOGGER->log_message(LogManager::INFO,stdsprintf("attempting to repeatedly reading register %s for %i times",regIter.c_str(), nReads));
+        vfatErrs = vfatErrs + repeatedRegReadLocal(&la, regIter, breakOnFailure, nReads);
+    } //End loop over registers in vec_regList
+
+    response->set_word("CRC_ERROR_CNT",          vfatErrs.crc);
+    response->set_word("PACKET_ERROR_CNT",       vfatErrs.packet);
+    response->set_word("BITSTUFFING_ERROR_CNT",  vfatErrs.bitstuffing);
+    response->set_word("TIMEOUT_ERROR_CNT",      vfatErrs.timeout);
+    response->set_word("AXI_STROBE_ERROR_CNT",   vfatErrs.axi_strobe);
+    response->set_word("SUM",                    vfatErrs.sum);
+    response->set_word("TRANSACTION_CNT",        vfatErrs.nTransactions);
+
+    rtxn.abort();
+} //End repeatedRegRead
+
 std::vector<uint32_t> sbitReadOutLocal(localArgs *la, uint32_t ohN, uint32_t acquireTime, bool *maxNetworkSizeReached)
 {
     //Setup the sbit monitor
@@ -222,6 +247,7 @@ extern "C" {
 
         modmgr->register_method("amc", "getOHVFATMask",          getOHVFATMask);
         modmgr->register_method("amc", "getOHVFATMaskMultiLink", getOHVFATMaskMultiLink);
+        modmgr->register_method("amc", "repeatedRegRead",        repeatedRegRead);
         modmgr->register_method("amc", "sbitReadOut",            sbitReadOut);
 
         // DAQ module methods (from amc/daq)

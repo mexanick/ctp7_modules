@@ -22,6 +22,8 @@
 #include <vector>
 #include <iterator>
 #include <cstdio>
+#include <thread>
+#include <chrono>
 
 extern memsvc_handle_t memsvc; /// \var global memory service handle required for registers read/write operations
 
@@ -55,6 +57,53 @@ static constexpr uint32_t LMDB_SIZE = 1UL * 1024UL * 1024UL * 50UL; ///< Maximum
                     .response = response};
 
 struct localArgs getLocalArgs(RPCMsg *response);
+
+struct slowCtrlErrCntVFAT{
+    uint32_t crc;           //GEM_AMC.SLOW_CONTROL.VFAT3.CRC_ERROR_CNT
+    uint32_t packet;        //GEM_AMC.SLOW_CONTROL.VFAT3.PACKET_ERROR_CNT
+    uint32_t bitstuffing;   //GEM_AMC.SLOW_CONTROL.VFAT3.BITSTUFFING_ERROR_CNT
+    uint32_t timeout;       //GEM_AMC.SLOW_CONTROL.VFAT3.TIMEOUT_ERROR_CNT
+    uint32_t axi_strobe;    //GEM_AMC.SLOW_CONTROL.VFAT3.AXI_STROBE_ERROR_CNT
+    uint32_t sum;           //Sum of above counters
+    uint32_t nTransactions; //GEM_AMC.SLOW_CONTROL.VFAT3.TRANSACTION_CNT
+
+    slowCtrlErrCntVFAT()
+    {
+        crc = packet = bitstuffing = timeout = axi_strobe = sum = nTransactions = 0;
+    }
+    slowCtrlErrCntVFAT(uint32_t crc, uint32_t packet, uint32_t bitstuffing, uint32_t timeout, uint32_t axi_strobe, uint32_t sum, unsigned nTransactions) : crc(crc), packet(packet), bitstuffing(bitstuffing), timeout(timeout), axi_strobe(axi_strobe), sum(sum), nTransactions(nTransactions) {}
+    slowCtrlErrCntVFAT operator + (const slowCtrlErrCntVFAT &vfatErrs) const
+    {
+        return slowCtrlErrCntVFAT(
+                crc+vfatErrs.crc,
+                packet+vfatErrs.packet,
+                bitstuffing+vfatErrs.bitstuffing,
+                timeout+vfatErrs.timeout,
+                axi_strobe+vfatErrs.axi_strobe,
+                sum+vfatErrs.sum,
+                nTransactions+vfatErrs.nTransactions);
+    }
+
+    //adapted from https://stackoverflow.com/questions/199333/how-do-i-detect-unsigned-integer-multiply-overflow
+    uint32_t overflowTest(const uint32_t &a, const uint32_t &b){
+        uint32_t overflowTest = a+b;
+        if( (overflowTest-b) != a){
+            return 0xffffffff;
+        } else {
+            return a+b;
+        }
+    }
+
+    void sumErrors()
+    {
+        sum = overflowTest(sum, crc);
+        sum = overflowTest(sum, packet);
+        sum = overflowTest(sum, bitstuffing);
+        sum = overflowTest(sum, timeout);
+        sum = overflowTest(sum, axi_strobe);
+    }
+};
+
 
 template<typename Out>
 void split(const std::string &s, char delim, Out result) {
@@ -180,6 +229,15 @@ uint32_t readBlock(localArgs* la, const std::string& regName, uint32_t* result, 
  *  \returns the number of uint32_t words in the result (or better to return a std::vector?
  */
 uint32_t readBlock(const uint32_t& regAddr,  uint32_t* result, const uint32_t& size, const uint32_t& offset=0);
+
+/*! \fn void repeatedRegReadLocal(localArgs * la, const std::string & regName, bool breakOnFailure=true, uint32_t nReads = 1000)
+ *  \brief Reads a register for nReads and then counts the number of slow control errors observed.
+ *  \param la Local arguments structure
+ *  \param regName Register name
+ *  \param breakOnFailure stop attempting to read regName before nReads is reached if a failed read occurs
+ *  \param nReads number of times to attempt to read regName
+ */
+slowCtrlErrCntVFAT repeatedRegReadLocal(localArgs * la, const std::string & regName, bool breakOnFailure=true, uint32_t nReads = 1000);
 
 /*! \fn void writeReg(localArgs * la, const std::string & regName, uint32_t value)
  *  \brief Writes a value to a register. Register mask is applied
