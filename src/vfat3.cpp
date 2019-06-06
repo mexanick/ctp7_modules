@@ -14,11 +14,12 @@
 #include "reedmuller.h"
 #include <iomanip>
 #include <memory>
+#include "hw_constants.h"
 
 uint32_t vfatSyncCheckLocal(localArgs * la, uint32_t ohN)
 {
     uint32_t goodVFATs = 0;
-    for(int vfatN = 0; vfatN < 24; vfatN++)
+    for(unsigned int vfatN = 0; vfatN < oh::VFATS_PER_OH; vfatN++)
     {
         char regBase [100];
         sprintf(regBase, "GEM_AMC.OH_LINKS.OH%i.VFAT%i",ohN, vfatN);
@@ -55,13 +56,13 @@ void configureVFAT3DacMonitorLocal(localArgs *la, uint32_t ohN, uint32_t mask, u
 
     //Get ref voltage and monitor gain
     //These should have been set at time of configure
-    uint32_t adcVRefValues[24];
-    uint32_t monitorGainValues[24];
+    uint32_t adcVRefValues[oh::VFATS_PER_OH];
+    uint32_t monitorGainValues[oh::VFATS_PER_OH];
     broadcastReadLocal(la, adcVRefValues, ohN, "CFG_VREF_ADC", mask);
     broadcastReadLocal(la, monitorGainValues, ohN, "CFG_MON_GAIN", mask);
 
     //Loop over all vfats and set the dacSelect
-    for(int vfatN=0; vfatN<24; ++vfatN){
+    for(unsigned int vfatN=0; vfatN<oh::VFATS_PER_OH; ++vfatN){
         // Check if vfat is masked
         if(!((notmask >> vfatN) & 0x1)){
             continue;
@@ -133,7 +134,7 @@ void configureVFAT3sLocal(localArgs * la, uint32_t ohN, uint32_t vfatMask) {
     }
 
     LOGGER->log_message(LogManager::INFO, "Load configuration settings");
-    for(uint32_t vfatN = 0; vfatN < 24; vfatN++) if((notmask >> vfatN) & 0x1)
+    for(uint32_t vfatN = 0; vfatN < oh::VFATS_PER_OH; vfatN++) if((notmask >> vfatN) & 0x1)
     {
         std::string configFileBase = "/mnt/persistent/gemdaq/vfat3/config_OH"+std::to_string(ohN)+"_VFAT"+std::to_string(vfatN)+".txt";
         std::ifstream infile(configFileBase);
@@ -180,11 +181,11 @@ void getChannelRegistersVFAT3(const RPCMsg *request, RPCMsg *response){
     uint32_t ohN = request->get_word("ohN");
     uint32_t vfatMask = request->get_word("vfatMask");
 
-    uint32_t chanRegData[24*128];
+    uint32_t chanRegData[oh::VFATS_PER_OH*128];
 
     getChannelRegistersVFAT3Local(&la, ohN, vfatMask, chanRegData);
 
-    response->set_word_array("chanRegData",chanRegData,24*128);
+    response->set_word_array("chanRegData",chanRegData,oh::VFATS_PER_OH*128);
 
     rtxn.abort();
 } //End getChannelRegistersVFAT3()
@@ -195,7 +196,7 @@ void getChannelRegistersVFAT3Local(localArgs *la, uint32_t ohN, uint32_t vfatMas
 
     char regBuf[200];
     LOGGER->log_message(LogManager::INFO, "Read channel register settings");
-    for(int vfatN=0; vfatN < 24; ++vfatN){
+    for(unsigned int vfatN=0; vfatN < oh::VFATS_PER_OH; ++vfatN){
         // Check if vfat is masked
         if(!((notmask >> vfatN) & 0x1)){
             continue;
@@ -211,9 +212,9 @@ void getChannelRegistersVFAT3Local(localArgs *la, uint32_t ohN, uint32_t vfatMas
 
         //Loop over the channels
         uint32_t chanAddr;
-        for(int chan=0; chan < 128; ++chan){
+        for(unsigned int chan=0; chan < 128; ++chan){
             //Deterime the idx
-            int idx = vfatN*128 + chan;
+            unsigned int idx = vfatN*128 + chan;
 
             //Get the address
             sprintf(regBuf,"GEM_AMC.OH.OH%i.GEB.VFAT%i.VFAT_CHANNELS.CHANNEL%i",ohN,vfatN,chan);
@@ -251,12 +252,12 @@ void readVFAT3ADC(const RPCMsg *request, RPCMsg *response){
     bool useExtRefADC = request->get_word("useExtRefADC");
     uint32_t vfatMask = request->get_word("vfatMask");
 
-    uint32_t adcData[24];
+    uint32_t adcData[oh::VFATS_PER_OH];
 
     LOGGER->log_message(LogManager::INFO, stdsprintf("Reading VFAT3 ADC's for OH%i with mask %x",ohN, vfatMask));
     readVFAT3ADCLocal(&la, adcData, ohN, useExtRefADC, vfatMask);
 
-    response->set_word_array("adcData",adcData,24);
+    response->set_word_array("adcData",adcData,oh::VFATS_PER_OH);
 
     rtxn.abort();
 } //End getChannelRegistersVFAT3()
@@ -275,8 +276,8 @@ void readVFAT3ADCMultiLink(const RPCMsg *request, RPCMsg *response){
         else
             LOGGER->log_message(LogManager::WARNING, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register value (%i), NOH request will be disregarded",NOH_requested,NOH));
     }
-    uint32_t adcData[24] = {0};
-    uint32_t adcDataAll[12*24] = {0};
+    uint32_t adcData[oh::VFATS_PER_OH] = {0};
+    uint32_t adcDataAll[amc::OH_PER_AMC*oh::VFATS_PER_OH] = {0};
     for(unsigned int ohN=0; ohN<NOH; ++ohN){
         // If this Optohybrid is masked skip it
         if(!((ohMask >> ohN) & 0x1)){
@@ -292,10 +293,10 @@ void readVFAT3ADCMultiLink(const RPCMsg *request, RPCMsg *response){
         readVFAT3ADCLocal(&la, adcData, ohN, useExtRefADC, vfatMask);
 
         //Copy all ADC values
-        std::copy(adcData, adcData+24, adcDataAll+(24*ohN));
+        std::copy(adcData, adcData+oh::VFATS_PER_OH, adcDataAll+(oh::VFATS_PER_OH*ohN));
     } //End Loop over all Optohybrids
 
-    response->set_word_array("adcDataAll",adcDataAll,12*24);
+    response->set_word_array("adcDataAll",adcDataAll,amc::OH_PER_AMC*oh::VFATS_PER_OH);
 
     rtxn.abort();
 } //End readVFAT3ADCMultiLink()
@@ -306,7 +307,7 @@ void setChannelRegistersVFAT3SimpleLocal(localArgs * la, uint32_t ohN, uint32_t 
 
     char regBuf[200];
     LOGGER->log_message(LogManager::INFO, "Write channel register settings");
-    for(int vfatN=0; vfatN < 24; ++vfatN){
+    for(unsigned int vfatN=0; vfatN < oh::VFATS_PER_OH; ++vfatN){
         // Check if vfat is masked
         if(!((notmask >> vfatN) & 0x1)){
             continue;
@@ -322,9 +323,9 @@ void setChannelRegistersVFAT3SimpleLocal(localArgs * la, uint32_t ohN, uint32_t 
 
         //Loop over the channels
         uint32_t chanAddr;
-        for(int chan=0; chan < 128; ++chan){
+        for(unsigned int chan=0; chan < 128; ++chan){
             //Deterime the idx
-            int idx = vfatN*128 + chan;
+            unsigned int idx = vfatN*128 + chan;
 
             //Get the address
             sprintf(regBuf,"GEM_AMC.OH.OH%i.GEB.VFAT%i.VFAT_CHANNELS.CHANNEL%i",ohN,vfatN,chan);
@@ -343,7 +344,7 @@ void setChannelRegistersVFAT3Local(localArgs * la, uint32_t ohN, uint32_t vfatMa
 
     char regBuf[200];
     LOGGER->log_message(LogManager::INFO, "Write channel register settings");
-    for(int vfatN=0; vfatN < 24; ++vfatN){
+    for(unsigned int vfatN=0; vfatN < oh::VFATS_PER_OH; ++vfatN){
         // Check if vfat is masked
         if(!((notmask >> vfatN) & 0x1)){
             continue;
@@ -360,9 +361,9 @@ void setChannelRegistersVFAT3Local(localArgs * la, uint32_t ohN, uint32_t vfatMa
         //Loop over the channels
         uint32_t chanAddr;
         uint32_t chanRegVal;
-        for(int chan=0; chan < 128; ++chan){
+        for(unsigned int chan=0; chan < 128; ++chan){
             //Deterime the idx
-            int idx = vfatN*128 + chan;
+            unsigned int idx = vfatN*128 + chan;
 
             //Get the address
             sprintf(regBuf,"GEM_AMC.OH.OH%i.GEB.VFAT%i.VFAT_CHANNELS.CHANNEL%i",ohN,vfatN,chan);
@@ -462,7 +463,7 @@ void statusVFAT3sLocal(localArgs * la, uint32_t ohN)
                            "CFG_RUN"};
     std::string regName;
 
-    for(int vfatN = 0; vfatN < 24; vfatN++)
+    for(unsigned int vfatN = 0; vfatN < oh::VFATS_PER_OH; vfatN++)
     {
         char regBase [100];
         sprintf(regBase, "GEM_AMC.OH_LINKS.OH%i.VFAT%i.",ohN, vfatN);
@@ -571,7 +572,7 @@ void getVFAT3ChipIDsLocal(localArgs * la, uint32_t ohN, uint32_t vfatMask, bool 
 
   std::string regName;
 
-  for(int vfatN = 0; vfatN < 24; vfatN++) {
+  for(unsigned int vfatN = 0; vfatN < oh::VFATS_PER_OH; vfatN++) {
     char regBase [100];
     sprintf(regBase, "GEM_AMC.OH.OH%i.GEB.VFAT%i.HW_CHIP_ID",ohN, vfatN);
 

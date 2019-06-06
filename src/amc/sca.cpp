@@ -4,6 +4,7 @@
  */
 
 #include "amc/sca.h"
+#include "hw_constants.h"
 
 uint32_t formatSCAData(uint32_t const& data)
 {
@@ -33,10 +34,10 @@ std::vector<uint32_t> sendSCACommandWithReply(localArgs* la, uint8_t const& ch, 
 
   sendSCACommand(la, ch, cmd, len, data, ohMask);
 
-  // read reply from 12 OptoHybrids
+  // read reply from OptoHybrids attached to an AMC
   std::vector<uint32_t> reply;
-  reply.reserve(12);
-  for (size_t oh = 0; oh < 12; ++oh) {
+  reply.reserve(amc::OH_PER_AMC);
+  for (size_t oh = 0; oh < amc::OH_PER_AMC; ++oh) {
     if ((ohMask >> oh) & 0x1) {
       std::stringstream regName;
       regName << "GEM_AMC.SLOW_CONTROL.SCA.MANUAL_CONTROL.SCA_REPLY_OH"

@@ -9,6 +9,7 @@
 #include "amc/ttc.h"
 #include "amc/daq.h"
 #include "amc/blaster_ram.h"
+#include "hw_constants.h"
 
 #include <chrono>
 #include <string>
@@ -45,7 +46,7 @@ unsigned int fw_version_check(const char* caller_name, localArgs *la)
 uint32_t getOHVFATMaskLocal(localArgs * la, uint32_t ohN)
 {
     uint32_t mask = 0x0;
-    for (int vfatN=0; vfatN<24; ++vfatN) { //Loop over all vfats
+    for (unsigned int vfatN=0; vfatN<oh::VFATS_PER_OH; ++vfatN) { //Loop over all vfats
         uint32_t syncErrCnt = readReg(la, stdsprintf("GEM_AMC.OH_LINKS.OH%i.VFAT%i.SYNC_ERR_CNT",ohN,vfatN));
 
         if (syncErrCnt > 0x0) { //Case: nonzero sync errors, mask this vfat
@@ -87,7 +88,7 @@ void getOHVFATMaskMultiLink(const RPCMsg *request, RPCMsg *response)
             LOGGER->log_message(LogManager::WARNING, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register value (%i), NOH request will be disregarded",NOH_requested,NOH));
     }
 
-    uint32_t ohVfatMaskArray[12];
+    uint32_t ohVfatMaskArray[amc::OH_PER_AMC];
     for (unsigned int ohN=0; ohN<NOH; ++ohN) {
         // If this Optohybrid is masked skip it
         if (!((ohMask >> ohN) & 0x1)) {
@@ -102,11 +103,11 @@ void getOHVFATMaskMultiLink(const RPCMsg *request, RPCMsg *response)
 
     //Debugging
     LOGGER->log_message(LogManager::DEBUG, "All VFAT Masks found, listing:");
-    for (int ohN=0; ohN<12; ++ohN) {
+    for (unsigned int ohN=0; ohN<amc::OH_PER_AMC; ++ohN) {
         LOGGER->log_message(LogManager::DEBUG, stdsprintf("VFAT Mask for OH%i to be 0x%x",ohN,ohVfatMaskArray[ohN]));
     }
 
-    response->set_word_array("ohVfatMaskArray",ohVfatMaskArray,12);
+    response->set_word_array("ohVfatMaskArray",ohVfatMaskArray,amc::OH_PER_AMC);
 
     rtxn.abort();
 } //End getOHVFATMaskMultiLink(...)

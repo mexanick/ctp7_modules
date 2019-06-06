@@ -1,5 +1,6 @@
 #include "amc.h"
 #include "optohybrid.h"
+#include "hw_constants.h"
 
 void broadcastWriteLocal(localArgs * la, uint32_t ohN, std::string regName, uint32_t value, uint32_t mask) {
   uint32_t fw_maj = readReg(la, "GEM_AMC.GEM_SYSTEM.RELEASE.MAJOR");
@@ -27,7 +28,7 @@ void broadcastWriteLocal(localArgs * la, uint32_t ohN, std::string regName, uint
     }
   } else if (fw_maj == 3) {
     std::string t_regName;
-    for (int vfatN=0; vfatN<24; vfatN++){
+    for (unsigned int vfatN=0; vfatN<oh::VFATS_PER_OH; vfatN++){
       if (!((mask >> vfatN)&0x1)) {
         char regBase [100];
         sprintf(regBase, "GEM_AMC.OH.OH%i.GEB.VFAT%i.",ohN, vfatN);
@@ -64,7 +65,7 @@ void broadcastReadLocal(localArgs * la, uint32_t * outData, uint32_t ohN, std::s
     la->response->set_string("error", "Unexpected value for system release major!");
   }
   std::string t_regName;
-  for (int i=0; i<24; i++){
+  for (unsigned int i=0; i<oh::VFATS_PER_OH; i++){
     if ((mask >> i)&0x1) outData[i] = 0;
     else {
       t_regName = std::string(regBase) + std::to_string(i)+"."+regName;
@@ -82,9 +83,9 @@ void broadcastRead(const RPCMsg *request, RPCMsg *response) {
   uint32_t mask = request->get_key_exists("mask")?request->get_word("mask"):0xFF000000;
   uint32_t ohN = request->get_word("ohN");
 
-  uint32_t outData[24];
+  uint32_t outData[oh::VFATS_PER_OH];
   broadcastReadLocal(&la, outData, ohN, regName, mask);
-  response->set_word_array("data", outData, 24);
+  response->set_word_array("data", outData, oh::VFATS_PER_OH);
 
   rtxn.abort();
 }
@@ -470,8 +471,8 @@ void getUltraScanResultsLocal(localArgs * la, uint32_t *outData, uint32_t ohN, u
     LOGGER->log_message(LogManager::DEBUG, stdsprintf("\tUltra scan results available (0x%06x)",readReg(la, scanBase + ".MONITOR.READY")));
 
     for(uint32_t dacVal = dacMin; dacVal <= dacMax; dacVal += dacStep){
-        for(int vfatN = 0; vfatN < 24; ++vfatN){
-            int idx = vfatN*(dacMax-dacMin+1)/dacStep+(dacVal-dacMin)/dacStep;
+        for(unsigned int vfatN = 0; vfatN < oh::VFATS_PER_OH; ++vfatN){
+            unsigned int idx = vfatN*(dacMax-dacMin+1)/dacStep+(dacVal-dacMin)/dacStep;
             outData[idx] = readReg(la, stdsprintf("GEM_AMC.OH.OH%i.ScanController.ULTRA.RESULTS.VFAT%i",ohN,vfatN));
             LOGGER->log_message(LogManager::DEBUG, stdsprintf("\tUltra scan results: outData[%i] = (%i, %i)",idx,(outData[idx]&0xff000000)>>24,(outData[idx]&0xffffff)));
         }
@@ -489,9 +490,9 @@ void getUltraScanResults(const RPCMsg *request, RPCMsg *response){
     uint32_t dacMax = request->get_word("dacMax");
     uint32_t dacStep = request->get_word("dacStep");
 
-    uint32_t outData[24*(dacMax-dacMin+1)/dacStep];
+    uint32_t outData[oh::VFATS_PER_OH*(dacMax-dacMin+1)/dacStep];
     getUltraScanResultsLocal(&la, outData, ohN, nevts, dacMin, dacMax, dacStep);
-    response->set_word_array("data",outData,24*(dacMax-dacMin+1)/dacStep);
+    response->set_word_array("data",outData,oh::VFATS_PER_OH*(dacMax-dacMin+1)/dacStep);
 
     rtxn.abort();
 } //End getUltraScanResults(...)
@@ -502,7 +503,7 @@ void stopCalPulse2AllChannelsLocal(localArgs *la, uint32_t ohN, uint32_t mask, u
 
     if (fw_maj == 1) {
         uint32_t trimVal=0;
-        for (int vfatN=0; vfatN<24; ++vfatN) {
+        for (unsigned int vfatN=0; vfatN<oh::VFATS_PER_OH; ++vfatN) {
             if ((mask >> vfatN) & 0x1) continue; //skip masked VFATs
             for (uint32_t chan=ch_min; chan<=ch_max; ++chan) {
                 if (chan>127) {
@@ -514,7 +515,7 @@ void stopCalPulse2AllChannelsLocal(localArgs *la, uint32_t ohN, uint32_t mask, u
             }
         }
     } else if (fw_maj == 3) {
-        for (int vfatN = 0; vfatN < 24; vfatN++) {
+        for (unsigned int vfatN = 0; vfatN < oh::VFATS_PER_OH; vfatN++) {
             if ((mask >> vfatN) & 0x1) continue; //skip masked VFATs
             for (uint32_t chan=ch_min; chan<=ch_max; ++chan) {
                 writeReg(la, stdsprintf("GEM_AMC.OH.OH%d.GEB.VFAT%d.VFAT_CHANNELS.CHANNEL%d.CALPULSE_ENABLE", ohN, vfatN, chan), 0x0);
@@ -567,7 +568,7 @@ void statusOHLocal(localArgs * la, uint32_t ohEnMask){
                            "CLOCKING.CLOCKING.LOGIC_MMCM_UNLOCKED_CNT"};
     std::string regName;
 
-    for(int ohN = 0; ohN < 12; ohN++) if((ohEnMask >> ohN) & 0x1)
+    for(unsigned int ohN = 0; ohN < amc::OH_PER_AMC; ohN++) if((ohEnMask >> ohN) & 0x1)
 
     {
         char regBase [100];
