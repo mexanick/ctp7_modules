@@ -174,7 +174,7 @@ void writeGBTPhase(const RPCMsg *request, RPCMsg *response)
 
 bool writeGBTPhaseLocal(localArgs *la, const uint32_t ohN, const uint32_t vfatN, const uint8_t phase)
 {
-    LOGGER->log_message(LogManager::INFO, stdsprintf("Writing %u to the VFAT #%u phase of OH #%u.", phase, vfatN, ohN));
+    //LOGGER->log_message(LogManager::INFO, stdsprintf("Writing %u to the VFAT #%u phase of OH #%u.", phase, vfatN, ohN));
 
     // ohN check
     const uint32_t ohMax = readReg(la, "GEM_AMC.GEM_SYSTEM.CONFIG.NUM_OF_OH");
@@ -191,6 +191,7 @@ bool writeGBTPhaseLocal(localArgs *la, const uint32_t ohN, const uint32_t vfatN,
 
     // Write the triplicated phase registers
     const uint32_t gbtN = gbt::elinkMappings::VFAT_TO_GBT[vfatN];
+    LOGGER->log_message(LogManager::INFO, stdsprintf("Writing %u to the VFAT #%u phase of GBT #%u, on OH #%u.", phase, vfatN, gbtN, ohN));
 
     for (unsigned char regN = 0; regN < 3; regN++) {
         const uint16_t regAddress = gbt::elinkMappings::ELINK_TO_REGISTERS[gbt::elinkMappings::VFAT_TO_ELINK[vfatN]][regN];
