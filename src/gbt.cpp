@@ -84,7 +84,6 @@ std::vector<std::vector<uint32_t>> scanGBTPhases::operator()(const uint32_t &ohN
 
 void writeGBTConfig::operator()(const uint32_t &ohN, const uint32_t &gbtN, const config_t &config) const
 {
-
     std::stringstream logOH_GBT_config;
     logOH_GBT_config << "Writing the configuration of OH #" << ohN << " - GBTX #" << gbtN << ".";
     LOG4CPLUS_INFO(logger, logOH_GBT_config);
@@ -105,7 +104,6 @@ void writeGBTConfig::operator()(const uint32_t &ohN, const uint32_t &gbtN, const
     for (size_t address = 0; address < CONFIG_SIZE; address++) {
         writeGBTReg(ohN, gbtN, static_cast<uint16_t>(address), config[address]);
     }
-
 }
 
 void writeGBTPhase::operator()(const uint32_t &ohN, const uint32_t &vfatN, const uint8_t &phase) const
