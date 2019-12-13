@@ -1,5 +1,5 @@
 /*! \file optohybrid.h
- *  \brief RPC module for optohybrid methods
+ *  \brief RPC module for \c OptoHybrid methods
  *  \author Mykhailo Dalchenko <mykhailo.dalchenko@cern.ch>
  *  \author Cameron Bravo <cbravo135@gmail.com>
  *  \author Brin Dorney <brian.l.dorney@cern.ch>
@@ -9,216 +9,229 @@
 
 #include "utils.h"
 #include "vfat_parameters.h"
-#include <unistd.h>
 
-/*! \fn void biasAllVFATsLocal(localArgs * la, uint32_t ohN, uint32_t mask = 0xFF000000)
- *  \brief Local callable. Sets default values to VFAT parameters. VFATs will remain in sleep mode
- *  \param la Local arguments structure
- *  \param ohN Optohybrid optical link number (string)
- *  \param mask VFAT mask. Default: no chips will be masked
- */
-void biasAllVFATsLocal(localArgs * la, uint32_t ohN, uint32_t mask = 0xFF000000);
+#include <map>
+#include <string>
+#include <vector>
 
-/*! \fn void broadcastWriteLocal(localArgs * la, uint32_t ohN, std::string regName, uint32_t value, uint32_t mask = 0xFF000000)
- *  \brief Local callable version of broadcastWrite
- *  \param la Local arguments structure
- *  \param ohN Optohybrid optical link number
- *  \param regName Register name
- *  \param value Register value to write
- *  \param mask VFAT mask. Default: no chips will be masked
- *  \return Bitmask of sync'ed VFATs
- */
-void broadcastWriteLocal(localArgs * la, uint32_t ohN, std::string regName, uint32_t value, uint32_t mask = 0xFF000000);
-/*! \fn void broadcastWrite(const RPCMsg *request, RPCMsg *response)
- *  \brief Performs broadcast write a given regiser on all the VFAT chips of a given optohybrid
- *  \param request RPC response message
- *  \param response RPC response message
- */
-void broadcastWrite(const RPCMsg *request, RPCMsg *response);
+namespace oh {
 
-/*! \fn void broadcastReadLocal(localArgs * la, uint32_t ohN, std::string regName, uint32_t mask = 0xFF000000)
- *  \brief Local callable version of broadcastRead
- *  \param la Local arguments structure
- *  \param outData pointer to the results of the broadcast read
- *  \param ohN Optohybrid optical link number
- *  \param regName Register name
- *  \param mask VFAT mask. Default: no chips will be masked
- *  \return Bitmask of sync'ed VFATs
- */
-void broadcastReadLocal(localArgs * la, uint32_t *outData, uint32_t ohN, std::string regName, uint32_t mask = 0xFF000000);
+  /*!
+   *  \brief Performs a write transaction on a specified regiser for unmasked the VFATs of a specified \c OptoHybrid
+   *
+   *  \param \c ohN \c OptoHybrid optical link number
+   *  \param \c regName Register name
+   *  \param \c value Register value to write
+   *  \param \c mask VFAT mask. Default: no chips will be masked
+   */
+  struct broadcastWrite : public xhal::common::rpc::Method
+  {
+    void operator()(const uint32_t &ohN, const std::string &regName, const uint32_t &value, const uint32_t &mask=0xff000000) const;
+  };
 
-/*! \fn void broadcastRead(const RPCMsg *request, RPCMsg *response)
- *  \brief Performs broadcast read of a given regiser on all the VFAT chips of a given optohybrid
- *  \param request RPC response message
- *  \param response RPC response message
- */
-void broadcastRead(const RPCMsg *request, RPCMsg *response);
+  /*!
+   *  \brief Performs a read transaction on a specified regiser on unmasked VFATs of a specified \c OptoHybrid
+   *
+   *  \param \c ohN \c OptoHybrid optical link number
+   *  \param \c regName Register name
+   *  \param \c mask VFAT mask. Default: no chips will be masked
+   *
+   *  \returns std::vector<uint32_t> holding the results of the broadcast read
+   */
+  struct broadcastRead : public xhal::common::rpc::Method
+  {
+    std::vector<uint32_t> operator()(const uint32_t &ohN, const std::string &regName, const uint32_t &mask=0xff000000) const;
+  };
 
-/*! \fn configureScanModuleLocal(localArgs * la, uint32_t ohN, uint32_t vfatN, uint32_t scanmode, bool useUltra, uint32_t mask, uint32_t ch, uint32_t nevts, uint32_t dacMin, uint32_t dacMax, uint32_t dacStep)
- *  \brief Local callable version of configureScanModule
- *
-     *     Configure the firmware scan controller
-     *      mode: 0 Threshold scan
-     *            1 Threshold scan per channel
-     *            2 Latency scan
-     *            3 s-curve scan
-     *            4 Threshold scan with tracking data
-     *      vfat: for single VFAT scan, specify the VFAT number
-     *            for ULTRA scan, specify the VFAT mask
- *
- *  \param la Local arguments structure
- *  \param ohN Optohybrid optical link number
- *  \param vfatN VFAT chip position
- *  \param scammode Scan mode
- *  \param useUltra Set to 1 in order to use the ultra scan
- *  \param mask VFAT chips mask
- *  \param ch Channel to scan
- *  \param nevts Number of events per scan point
- *  \param dacMin Minimal value of scan variable
- *  \param dacMax Maximal value of scan variable
- *  \param dacStep Scan variable change step
- */
-void configureScanModuleLocal(localArgs * la, uint32_t ohN, uint32_t vfatN, uint32_t scanmode, bool useUltra, uint32_t mask, uint32_t ch, uint32_t nevts, uint32_t dacMin, uint32_t dacMax, uint32_t dacStep);
+  /*!
+   *  \brief Sets default values to VFAT parameters. VFATs will remain in sleep mode
+   *
+   *  \param \c ohN \c OptoHybrid optical link number
+   *  \param \c mask VFAT mask. Default: no chips will be masked
+   */
+  struct biasAllVFATs : public xhal::common::rpc::Method
+  {
+    void operator()(const uint32_t &ohN, const uint32_t &mask=0xff000000) const;
+  };
 
-/*! \fn void configureScanModule(const RPCMsg *request, RPCMsg *response)
- *  \brief Configures V2b FW scan module
- *  \param request RPC response message
- *  \param response RPC response message
- */
-void configureScanModule(const RPCMsg *request, RPCMsg *response);
+  /*!
+   *  \briefSets VFATs to run mode
+   *
+   *  \param \c ohN \c OptoHybrid optical link number (string)
+   *  \param \c mask VFAT mask. Default: no chips will be masked
+   */
+  struct setAllVFATsToRunMode : public xhal::common::rpc::Method
+  {
+    void operator()(const uint32_t &ohN, const uint32_t &mask=0xff000000) const;
+  };
 
-/*! \fn void configureVFATs(const RPCMsg *request, RPCMsg *response)
- *  \brief Configures VFAT chips (V2B only). Calls biasVFATs, loads VT1 and TRIMDAC values from the config files
- *  \param request RPC response message
- *  \param response RPC response message
- */
-void configureVFATs(const RPCMsg *request, RPCMsg *response);
+  /*!
+   *  \brief Sets VFATs to sleep mode
+   *
+   *  \param \c ohN \c OptoHybrid optical link number (string)
+   *  \param \c mask VFAT mask. Default: no chips will be masked
+   */
+  struct setAllVFATsToSleepMode : public xhal::common::rpc::Method
+  {
+    void operator()(const uint32_t &ohN, const uint32_t &mask=0xff000000) const;
+  };
 
-/*! \fn void getUltraScanResultsLocal(localArgs *la, uint32_t *outData, uint32_t ohN, uint32_t nevts, uint32_t dacMin, uint32_t dacMax, uint32_t dacStep)
- *  \brief Local callable version of getUltraScanResults
- *  \param la Local arguments structure
- *  \param outData Pointer to output data array
- *  \param nevts Number of events per scan point
- *  \param dacMin Minimal value of scan variable
- *  \param dacMax Maximal value of scan variable
- *  \param dacStep Scan variable change step
- */
-void getUltraScanResultsLocal(localArgs *la, uint32_t *outData, uint32_t ohN, uint32_t nevts, uint32_t dacMin, uint32_t dacMax, uint32_t dacStep);
+  /*!
+   *  \brief Sets trimming DAC parameters for each channel of each chip
+   *
+   *  \throws \c std::runtime_error if the \c configFile is not able to be opened
+   *
+   *  \param \c ohN \c OptoHybrid optical link number
+   *  \param \c configFile Configuration file with trimming parameters
+   */
+  struct loadTRIMDAC : public xhal::common::rpc::Method
+  {
+    void operator()(const uint32_t &ohN, const std::string &configFile) const;
+  };
 
-/*! \fn void getUltraScanResults(const RPCMsg *request, RPCMsg *response)
- *  \brief Returns results of an ultra scan routine
- *  \param request RPC response message
- *  \param response RPC response message
- */
-void getUltraScanResults(const RPCMsg *request, RPCMsg *response);
+  /*!
+   *  \brief Returns a list of the most important monitoring registers of \c OptoHybrids
+   *
+   *  \param \c ohMask Bit mask of enabled optical links
+   *
+   *  \returns std::map with keys corresponding to the OH status registers
+               and values are stored in an std::vector with one entry for each OH
+   */
+  struct statusOH : public xhal::common::rpc::Method
+  {
+    std::map<std::string, std::vector<uint32_t>> operator()(const uint32_t &ohMask) const;
+  };
 
-/*! \fn void loadTRIMDACLocal(localArgs * la, uint32_t ohN, std::string config_file)
- *  \brief Local callable version of loadTRIMDAC
- *  \param la Local arguments structure
- *  \param ohN Optohybrid optical link number
- *  \param config_file Configuration file with trimming parameters
- */
-void loadTRIMDACLocal(localArgs * la, uint32_t ohN, std::string config_file);
+  /*!
+   *  \brief Disables calibration pulse in channels between chMin and chMax
+   *
+   *  \param \c ohN \c OptoHybrid optical link number
+   *  \param \c mask VFAT mask. Default: no chips will be masked
+   *  \param \c chMin Minimal channel number
+   *  \param \c chMax Maximal channel number
+   */
+  struct stopCalPulse2AllChannels : public xhal::common::rpc::Method
+  {
+    void operator()(const uint32_t &ohN, const uint32_t &mask, const uint32_t &ch_min, const uint32_t &ch_max) const;
+  };
 
-/*! \fn void loadTRIMDAC(const RPCMsg *request, RPCMsg *response)
- *  \brief Sets trimming DAC parameters for each channel of each chip
- *  \param request RPC response message
- *  \param response RPC response message
- */
-void loadTRIMDAC(const RPCMsg *request, RPCMsg *response);
+  /*!
+   *  \brief Sets threshold and trim range for each VFAT2 chip
+   *
+   *  \deprecated
+   *
+   *  \throws \c std::runtime_error if \c configFile cannot be opened
+   *
+   *  \param \c ohN \c OptoHybrid optical link number
+   *  \param \c config_file Configuration file with VT1 and trim values. Optional (could be supplied as an empty string)
+   *  \param \c vt1. Default: 0x64, used if the config_file is not provided
+   */
+  struct [[deprecated]] loadVT1 : public xhal::common::rpc::Method
+  {
+    // __attribute__((__deprecated__))
+    void operator()(const uint32_t &ohN, const std::string &config_file="", const uint32_t &vt1=0x64) const;
+  };
 
-/*! \fn void loadVT1Local(localArgs * la, uint32_t ohN, std::string config_file, uint32_t vt1 = 0x64)
- *  \brief Local callable version of loadVT1
- *  \param la Local arguments structure
- *  \param ohN Optohybrid optical link number
- *  \param config_file Configuration file with VT1 and trim values. Optional (could be supplied as an empty string)
- *  \param vt1. Default: 0x64, used if the config_file is not provided
- *  \return Bitmask of sync'ed VFATs
- */
-void loadVT1Local(localArgs * la, uint32_t ohN, std::string config_file, uint32_t vt1 = 0x64);
+  /*!
+   *  \brief Configures VFAT chips (V2B only). Calls biasVFATs, loads VT1 and TRIMDAC values from the config files
+   *
+   *  \deprecated
+   *
+   *  \param \c ohN
+   *  \param \c trimConfigFile
+   *  \param \c threshConfigFile
+   *  \param \c vt1
+   *  \param \c setRunMode
+   */
+  struct [[deprecated]] configureVFATs : public xhal::common::rpc::Method
+  {
+    // __attribute__((__deprecated__))
+      void operator()(const uint16_t &ohN, const std::string &trimConfigFile, const std::string &threshConfigFile, const uint8_t &vt1, const bool &setRunMode=false) const;
+  };
 
-/*! \fn void loadVT1(const RPCMsg *request, RPCMsg *response)
- *  \brief Sets threshold and trim range for each VFAT2 chip
- *  \param request RPC response message
- *  \param response RPC response message
- */
-void loadVT1(const RPCMsg *request, RPCMsg *response);
+  /*!
+   *  \brief Configures V2b FW scan module
+   *
+   *     Configure the firmware scan controller
+   *      mode: 0 Threshold scan
+   *            1 Threshold scan per channel
+   *            2 Latency scan
+   *            3 s-curve scan
+   *            4 Threshold scan with tracking data
+   *      vfat: for single VFAT scan, specify the VFAT number
+   *            for ULTRA scan, specify the VFAT mask
+   *
+   *  \deprecated
+   *
+   *  \throws \c std::runtime_error if a scan is already running, as determined by the \c MONITOR.STATUS register
+   *
+   *  \param \c ohN \c OptoHybrid optical link number
+   *  \param \c vfatN VFAT chip position
+   *  \param \c scammode Scan mode
+   *  \param \c useUltra Set to 1 in order to use the ultra scan
+   *  \param \c mask VFAT chips mask
+   *  \param \c ch Channel to scan
+   *  \param \c nevts Number of events per scan point
+   *  \param \c dacMin Minimal value of scan variable
+   *  \param \c dacMax Maximal value of scan variable
+   *  \param \c dacStep Scan variable change step
+   */
+  struct [[deprecated]] configureScanModule : public xhal::common::rpc::Method
+  {
+    // __attribute__((__deprecated__))
+    void operator()(const uint32_t &ohN, const uint32_t &vfatN, const uint32_t &scanmode, const bool &useUltra, const uint32_t &mask, const uint32_t &ch, const uint32_t &nevts, const uint32_t &dacMin, const uint32_t &dacMax, const uint32_t &dacStep) const;
+  };
 
-/*! \fn void printScanConfigurationLocal(localArgs * la, uint32_t ohN, bool useUltra)
- *  \brief Local callable version of printScanConfiguration
- *  \param la Local arguments structure
- *  \param ohN Optohybrid optical link number
- *  \param useUltra Set to 1 in order to use the ultra scan
- */
-void printScanConfigurationLocal(localArgs * la, uint32_t ohN, bool useUltra);
+  /*!
+   *  \brief Returns results of an ultra scan routine
+   *
+   *  \deprecated
+   *
+   *  \param \c outData Pointer to output data array
+   *  \param \c nevts Number of events per scan point
+   *  \param \c dacMin Minimal value of scan variable
+   *  \param \c dacMax Maximal value of scan variable
+   *  \param \c dacStep Scan variable change step
+   */
+  struct [[deprecated]] getUltraScanResults : public xhal::common::rpc::Method
+  {
+    /* __attribute__((__deprecated__)) */
+    std::vector<uint32_t> operator()(const uint32_t &ohN, const uint32_t &nevts, const uint32_t &dacMin, const uint32_t &dacMax, const uint32_t &dacStep) const;
+  };
 
-/*! \fn void printScanConfiguration(const RPCMsg *request, RPCMsg *response)
- *  \brief Prints V2b FW scan module configuration
- *  \param request RPC response message
- *  \param response RPC response message
- */
-void printScanConfiguration(const RPCMsg *request, RPCMsg *response);
+  /*!
+   *  \brief Prints V2b FW scan module configuration
+   *
+   *  \deprecated
+   *
+   *  \throws \c std::runtime_error if reading one of the registers fails
+   *
+   *  \param \c ohN \c OptoHybrid optical link number
+   *  \param \c useUltra Set to 1 in order to use the ultra scan
+   */
+  struct [[deprecated]] printScanConfiguration : public xhal::common::rpc::Method
+  {
+    // __attribute__((__deprecated__))
+    void operator()(const uint32_t &ohN, const bool &useUltra) const;
+  };
 
-/*! \fn void setAllVFATsToRunModeLocal(localArgs * la, uint32_t ohN, uint32_t mask = 0xFF000000)
- *  \brief Local callable. Sets VFATs to run mode
- *  \param la Local arguments structure
- *  \param ohN Optohybrid optical link number (string)
- *  \param mask VFAT mask. Default: no chips will be masked
- */
-void setAllVFATsToRunModeLocal(localArgs * la, uint32_t ohN, uint32_t mask = 0xFF000000);
-
-/*! \fn void setAllVFATsToSleepModeLocal(localArgs * la, uint32_t ohN, uint32_t mask = 0xFF000000)
- *  \brief Local callable. Sets VFATs to sleep mode
- *  \param la Local arguments structure
- *  \param ohN Optohybrid optical link number (string)
- *  \param mask VFAT mask. Default: no chips will be masked
- */
-void setAllVFATsToSleepModeLocal(localArgs * la, uint32_t ohN, uint32_t mask = 0xFF000000);
-
-/*! \fn void startScanModuleLocal(localArgs * la, uint32_t ohN, bool useUltra)
- *  \brief Local callable version of startScanModule
- *  \param la Local arguments structure
- *  \param ohN Optohybrid optical link number
- *  \param useUltra Set to 1 in order to use the ultra scan
- */
-void startScanModuleLocal(localArgs * la, uint32_t ohN, bool useUltra);
-
-/*! \fn void startScanModule(const RPCMsg *request, RPCMsg *response)
- *  \brief Starts V2b FW scan module
- *  \param request RPC response message
- *  \param response RPC response message
- */
-void startScanModule(const RPCMsg *request, RPCMsg *response);
-
-/*! \fn void statusOHLocal(localArgs * la, uint32_t ohEnMask)
- *  \brief Local callable version of statusOH
- *  \param la Local arguments structure
- *  \param ohEnMask Bit mask of enabled optical links
- */
-void statusOHLocal(localArgs * la, uint32_t ohEnMask);
-
-/*! \fn void statusOH(const RPCMsg *request, RPCMsg *response)
- *  \brief Returns a list of the most important monitoring registers of optohybrids
- *  \param request RPC response message
- *  \param response RPC response message
- */
-void statusOH(const RPCMsg *request, RPCMsg *response);
-
-/*! \fn void stopCalPulse2AllChannelsLocal(localArgs *la, uint32_t ohN, uint32_t mask, uint32_t ch_min, uint32_t ch_max)
- *  \brief Local callable version of stopCalPulse2AllChannels
- *  \param la Local arguments structure
- *  \param ohN Optohybrid optical link number
- *  \param mask VFAT mask. Default: no chips will be masked
- *  \param chMin Minimal channel number
- *  \param chMax Maximal channel number
- */
-void stopCalPulse2AllChannelsLocal(localArgs *la, uint32_t ohN, uint32_t mask, uint32_t ch_min, uint32_t ch_max);
-
-/*! \fn void stopCalPulse2AllChannels(const RPCMsg *request, RPCMsg *response)
- *  \brief Disables calibration pulse in channels between chMin and chMax
- *  \param request RPC response message
- *  \param response RPC response message
- */
-void stopCalPulse2AllChannels(const RPCMsg *request, RPCMsg *response);
+  /*!
+   *  \brief Starts V2b FW scan module
+   *
+   *  \deprecated
+   *
+   *  \throws \c std::runtime_error if:
+   *          A scan is already running, as reported by \c MONITOR.STATUS
+   *          An error is detected, as reported by \c MONITOR.ERROR
+   *
+   *  \param \c ohN \c OptoHybrid optical link number
+   *  \param \c useUltra Set to 1 in order to use the ultra scan
+   */
+  struct [[deprecated]] startScanModule : public xhal::common::rpc::Method
+  {
+    // __attribute__((__deprecated__))
+    void operator()(const uint32_t &ohN, const bool &useUltra) const;
+  };
+}
 
 #endif
