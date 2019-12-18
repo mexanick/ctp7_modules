@@ -82,7 +82,7 @@ TestSources  := $(wildcard $(PackageTestSourceDir)/*.cxx) $(wildcard $(PackageTe
 Dependencies := $(patsubst $(PackageSourceDir)/%.cpp, $(PackageObjectDir)/%.d, $(Sources))
 TargetObjects:= $(patsubst %.d,%.o,$(Dependencies))
 
-TargetLibraries:=memhub memory
+TargetLibraries:=memhub memory utils
 ifeq ($(Arch),x86_64)
 else
 TargetLibraries+=optical
