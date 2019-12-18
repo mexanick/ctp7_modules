@@ -28,9 +28,9 @@ void scanGBTPhases(const RPCMsg *request, RPCMsg *response)
     const uint32_t nVerificationReads = request->get_key_exists("nVerificationReads")?request->get_word("nVerificationReads"):10;
 
     // Perform the scan
-    LOGGER->log_message(LogManager::INFO, stdsprintf("Calling Local Method for OH #%u.", ohN));
+    LOG4CPLUS_INFO(logger, stdsprintf("Calling Local Method for OH #%u.", ohN));
     if (scanGBTPhasesLocal(&la, ohN, nScans, phaseMin, phaseMax, phaseStep, nVerificationReads)) {
-        LOGGER->log_message(LogManager::INFO, stdsprintf("GBT Scan for OH #%u Failed.", ohN));
+        LOG4CPLUS_INFO(logger, stdsprintf("GBT Scan for OH #%u Failed.", ohN));
         rtxn.abort();
     }
 
@@ -39,7 +39,7 @@ void scanGBTPhases(const RPCMsg *request, RPCMsg *response)
 
 bool scanGBTPhasesLocal(localArgs *la, const uint32_t ohN, const uint32_t nResets, const uint8_t phaseMin, const uint8_t phaseMax, const uint8_t phaseStep, const uint32_t nVerificationReads)
 {
-    LOGGER->log_message(LogManager::INFO, stdsprintf("Scanning the phases for OH #%u.", ohN));
+    LOG4CPLUS_INFO(logger, stdsprintf("Scanning the phases for OH #%u.", ohN));
 
     // ohN check
     const uint32_t ohMax = readReg(la, "GEM_AMC.GEM_SYSTEM.CONFIG.NUM_OF_OH");
@@ -138,7 +138,7 @@ void writeGBTConfig(const RPCMsg *request, RPCMsg *response)
 
 bool writeGBTConfigLocal(localArgs *la, const uint32_t ohN, const uint32_t gbtN, const gbt::config_t &config)
 {
-    LOGGER->log_message(LogManager::INFO, stdsprintf("Writing the configuration of OH #%u - GBTX #%u.", ohN, gbtN));
+    LOG4CPLUS_INFO(logger, stdsprintf("Writing the configuration of OH #%u - GBTX #%u.", ohN, gbtN));
 
     // ohN check
     const uint32_t ohMax = readReg(la, "GEM_AMC.GEM_SYSTEM.CONFIG.NUM_OF_OH");
@@ -175,7 +175,7 @@ void writeGBTPhase(const RPCMsg *request, RPCMsg *response)
 
 bool writeGBTPhaseLocal(localArgs *la, const uint32_t ohN, const uint32_t vfatN, const uint8_t phase)
 {
-    LOGGER->log_message(LogManager::INFO, stdsprintf("Writing %u to the VFAT #%u phase of OH #%u.", phase, vfatN, ohN));
+    LOG4CPLUS_INFO(logger, stdsprintf("Writing phase %u to VFAT #%u of OH #%u.", phase, vfatN, ohN));
 
     // ohN check
     const uint32_t ohMax = readReg(la, "GEM_AMC.GEM_SYSTEM.CONFIG.NUM_OF_OH");
@@ -192,7 +192,7 @@ bool writeGBTPhaseLocal(localArgs *la, const uint32_t ohN, const uint32_t vfatN,
 
     // Write the triplicated phase registers
     const uint32_t gbtN = gbt::elinkMappings::VFAT_TO_GBT[vfatN];
-    LOGGER->log_message(LogManager::INFO, stdsprintf("Writing %u to the VFAT #%u phase of GBT #%u, on OH #%u.", phase, vfatN, gbtN, ohN));
+    LOG4CPLUS_INFO(logger, stdsprintf("Writing %u to the VFAT #%u phase of GBT #%u, on OH #%u.", phase, vfatN, gbtN, ohN));
 
     for (unsigned char regN = 0; regN < 3; regN++) {
         const uint16_t regAddress = gbt::elinkMappings::ELINK_TO_REGISTERS[gbt::elinkMappings::VFAT_TO_ELINK[vfatN]][regN];

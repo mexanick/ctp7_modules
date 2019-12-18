@@ -39,7 +39,7 @@ void broadcastWriteLocal(localArgs * la, uint32_t ohN, std::string regName, uint
       }
     }
   } else {
-    LOGGER->log_message(LogManager::ERROR, stdsprintf("Unexpected value for system release major: %i",fw_maj));
+    LOG4CPLUS_ERROR(logger, stdsprintf("Unexpected value for system release major: %i",fw_maj));
   }
 }
 
@@ -63,7 +63,7 @@ void broadcastReadLocal(localArgs * la, uint32_t * outData, uint32_t ohN, std::s
   } else if (fw_maj == 3) {
     sprintf(regBase,"GEM_AMC.OH.OH%i.GEB.VFAT",ohN);
    } else {
-    LOGGER->log_message(LogManager::ERROR, "Unexpected value for system release major!");
+    LOG4CPLUS_ERROR(logger, "Unexpected value for system release major!");
     la->response->set_string("error", "Unexpected value for system release major!");
   }
   std::string t_regName;
@@ -109,7 +109,7 @@ void setAllVFATsToRunModeLocal(localArgs * la, uint32_t ohN, uint32_t mask) {
             broadcastWriteLocal(la, ohN, "ContReg0", 0x37, mask);
             break;
         default:
-            LOGGER->log_message(LogManager::ERROR, "Unexpected value for system release major, do nothing");
+            LOG4CPLUS_ERROR(logger, "Unexpected value for system release major, do nothing");
             break;
     }
 
@@ -125,7 +125,7 @@ void setAllVFATsToSleepModeLocal(localArgs * la, uint32_t ohN, uint32_t mask) {
             broadcastWriteLocal(la, ohN, "ContReg0", 0x36, mask);
             break;
         default:
-            LOGGER->log_message(LogManager::ERROR, "Unexpected value for system release major, do nothing");
+            LOG4CPLUS_ERROR(logger, "Unexpected value for system release major, do nothing");
             break;
     }
 
@@ -139,28 +139,28 @@ void loadVT1Local(localArgs * la, uint32_t ohN, std::string config_file, uint32_
   std::string line, regName;
   // Check if there's a config file. If yes, set the thresholds and trim range according to it, otherwise st only thresholds (equal on all chips) to provided vt1 value
   if (config_file!="") {
-    LOGGER->log_message(LogManager::INFO, stdsprintf("CONFIG FILE FOUND: %s", config_file.c_str()));
+    LOG4CPLUS_INFO(logger, stdsprintf("CONFIG FILE FOUND: %s", config_file.c_str()));
     std::ifstream infile(config_file);
     std::getline(infile,line);// skip first line
     while (std::getline(infile,line))
     {
       std::stringstream iss(line);
       if (!(iss >> vfatN >> vt1 >> trimRange)) {
-        LOGGER->log_message(LogManager::ERROR, "ERROR READING SETTINGS");
+        LOG4CPLUS_ERROR(logger, "ERROR READING SETTINGS");
         la->response->set_string("error", "Error reading settings");
         break;
       } else {
         char regBase [100];
         sprintf(regBase,"GEM_AMC.OH.OH%i.GEB.VFATS.VFAT%i.VThreshold1",ohN, vfatN);
-        //LOGGER->log_message(LogManager::INFO, stdsprintf("WRITING 0x%8x to REG: %s", vt1, regName.c_str()));
+        //LOG4CPLUS_INFO(logger, stdsprintf("WRITING 0x%8x to REG: %s", vt1, regName.c_str()));
         writeRawReg(la, std::string(regName), vt1);
         sprintf(regBase,"GEM_AMC.OH.OH%i.GEB.VFATS.VFAT%i.ContReg3",ohN, vfatN);
-        //LOGGER->log_message(LogManager::INFO, stdsprintf("WRITING 0x%8x to REG: %s", trimRange, regName.c_str()));
+        //LOG4CPLUS_INFO(logger, stdsprintf("WRITING 0x%8x to REG: %s", trimRange, regName.c_str()));
         writeRawReg(la, regName, trimRange);
       }
     }
   } else {
-    LOGGER->log_message(LogManager::INFO, "CONFIG FILE NOT FOUND");
+    LOG4CPLUS_INFO(logger, "CONFIG FILE NOT FOUND");
     broadcastWriteLocal(la, ohN, "VThreshold1", vt1);
   }
 }
@@ -186,7 +186,7 @@ void loadTRIMDACLocal(localArgs * la, uint32_t ohN, std::string config_file) {
   {
     std::stringstream iss(line);
     if (!(iss >> vfatN >> vfatCH >> trim >> mask)) {
-		  LOGGER->log_message(LogManager::ERROR, "ERROR READING SETTINGS");
+		  LOG4CPLUS_ERROR(logger, "ERROR READING SETTINGS");
       la->response->set_string("error", "Error reading settings");
       break;
     } else {
@@ -216,11 +216,11 @@ void configureVFATs(const RPCMsg *request, RPCMsg *response) {
   std::string thresh_config_file = request->get_key_exists("thresh_config_filename")?request->get_string("thresh_config_filename"):"";
   uint32_t vt1 = request->get_key_exists("vt1")?request->get_word("vt1"):0x64;
 
-  LOGGER->log_message(LogManager::INFO, "BIAS VFATS");
+  LOG4CPLUS_INFO(logger, "BIAS VFATS");
   biasAllVFATsLocal(&la, ohN);
-  LOGGER->log_message(LogManager::INFO, "LOAD VT1 VFATS");
+  LOG4CPLUS_INFO(logger, "LOAD VT1 VFATS");
   loadVT1Local(&la, ohN, thresh_config_file, vt1);
-  LOGGER->log_message(LogManager::INFO, "LOAD TRIM VFATS");
+  LOG4CPLUS_INFO(logger, "LOAD TRIM VFATS");
   loadTRIMDACLocal(&la, ohN, trim_config_file);
   if (request->get_key_exists("set_run")) setAllVFATsToRunModeLocal(&la, ohN);
 
@@ -249,7 +249,7 @@ void configureScanModuleLocal(localArgs * la, uint32_t ohN, uint32_t vfatN, uint
 
     // check if another scan is running
     if (readReg(la, scanBase + ".MONITOR.STATUS") > 0) {
-      LOGGER->log_message(LogManager::WARNING, stdsprintf("%s: Scan is already running, not starting a new scan", scanBase.c_str()));
+      LOG4CPLUS_WARN(logger, stdsprintf("%s: Scan is already running, not starting a new scan", scanBase.c_str()));
       la->response->set_string("error", "Scan is already running, not starting a new scan");
       return;
     }
@@ -382,14 +382,14 @@ void startScanModuleLocal(localArgs * la, uint32_t ohN, bool useUltra){
 
     // check if another scan is running
     if (readReg(la, scanBase + ".MONITOR.STATUS") > 0) {
-      LOGGER->log_message(LogManager::WARNING, stdsprintf("%s: Scan is already running, not starting a new scan", scanBase.c_str()));
+      LOG4CPLUS_WARN(logger, stdsprintf("%s: Scan is already running, not starting a new scan", scanBase.c_str()));
       la->response->set_string("error", "Scan is already running, not starting a new scan");
       return;
     }
 
     //Check if there was an error in the config
     if (readReg(la, scanBase + ".MONITOR.ERROR") > 0 ){
-        LOGGER->log_message(LogManager::WARNING, stdsprintf("OH %i: Error in scan configuration, not starting a new scans",ohN));
+        LOG4CPLUS_WARN(logger, stdsprintf("OH %i: Error in scan configuration, not starting a new scans",ohN));
         la->response->set_string("error","Error in scan configuration");
         return;
     }
@@ -399,9 +399,9 @@ void startScanModuleLocal(localArgs * la, uint32_t ohN, bool useUltra){
     if (readReg(la, scanBase + ".MONITOR.ERROR")
             || !(readReg(la,  scanBase + ".MONITOR.STATUS")))
     {
-        LOGGER->log_message(LogManager::WARNING, stdsprintf("OH %i: Scan failed to start",ohN));
-        LOGGER->log_message(LogManager::WARNING, stdsprintf("\tERROR Code:\t %i",readReg(la, scanBase + ".MONITOR.ERROR")));
-        LOGGER->log_message(LogManager::WARNING, stdsprintf("\tSTATUS Code:\t %i",readReg(la, scanBase + ".MONITOR.STATUS")));
+        LOG4CPLUS_WARN(logger, stdsprintf("OH %i: Scan failed to start",ohN));
+        LOG4CPLUS_WARN(logger, stdsprintf("\tERROR Code:\t %i",readReg(la, scanBase + ".MONITOR.ERROR")));
+        LOG4CPLUS_WARN(logger, stdsprintf("\tSTATUS Code:\t %i",readReg(la, scanBase + ".MONITOR.STATUS")));
     }
 
     return;
@@ -468,15 +468,15 @@ void getUltraScanResultsLocal(localArgs * la, uint32_t *outData, uint32_t ohN, u
         sleep(0.1);
     }
 
-    LOGGER->log_message(LogManager::DEBUG, "OH " + strOhN + ": getUltraScanResults(...)");
-    LOGGER->log_message(LogManager::DEBUG, stdsprintf("\tUltra scan status (0x%08x)\n",readReg(la, scanBase + ".MONITOR.STATUS")));
-    LOGGER->log_message(LogManager::DEBUG, stdsprintf("\tUltra scan results available (0x%06x)",readReg(la, scanBase + ".MONITOR.READY")));
+    LOG4CPLUS_DEBUG(logger, "OH " + strOhN + ": getUltraScanResults(...)");
+    LOG4CPLUS_DEBUG(logger, stdsprintf("\tUltra scan status (0x%08x)\n",readReg(la, scanBase + ".MONITOR.STATUS")));
+    LOG4CPLUS_DEBUG(logger, stdsprintf("\tUltra scan results available (0x%06x)",readReg(la, scanBase + ".MONITOR.READY")));
 
     for(uint32_t dacVal = dacMin; dacVal <= dacMax; dacVal += dacStep){
         for(unsigned int vfatN = 0; vfatN < oh::VFATS_PER_OH; ++vfatN){
             unsigned int idx = vfatN*(dacMax-dacMin+1)/dacStep+(dacVal-dacMin)/dacStep;
             outData[idx] = readReg(la, stdsprintf("GEM_AMC.OH.OH%i.ScanController.ULTRA.RESULTS.VFAT%i",ohN,vfatN));
-            LOGGER->log_message(LogManager::DEBUG, stdsprintf("\tUltra scan results: outData[%i] = (%i, %i)",idx,(outData[idx]&0xff000000)>>24,(outData[idx]&0xffffff)));
+            LOG4CPLUS_DEBUG(logger, stdsprintf("\tUltra scan results: outData[%i] = (%i, %i)",idx,(outData[idx]&0xff000000)>>24,(outData[idx]&0xffffff)));
         }
     }
 
@@ -509,7 +509,7 @@ void stopCalPulse2AllChannelsLocal(localArgs *la, uint32_t ohN, uint32_t mask, u
             if ((mask >> vfatN) & 0x1) continue; //skip masked VFATs
             for (uint32_t chan=ch_min; chan<=ch_max; ++chan) {
                 if (chan>127) {
-                    LOGGER->log_message(LogManager::ERROR, stdsprintf("OH %d: Chan %d greater than possible chan_max %d",ohN,chan,127));
+                    LOG4CPLUS_ERROR(logger, stdsprintf("OH %d: Chan %d greater than possible chan_max %d",ohN,chan,127));
                 } else {
                     trimVal = (0x3f & readReg(la, stdsprintf("GEM_AMC.OH.OH%d.GEB.VFATS.VFAT%d.VFATChannels.ChanReg%d",ohN,vfatN,chan)));
                     writeReg(la, stdsprintf("GEM_AMC.OH.OH%d.GEB.VFATS.VFAT%d.VFATChannels.ChanReg%d",ohN,vfatN,chan),trimVal);
@@ -524,7 +524,7 @@ void stopCalPulse2AllChannelsLocal(localArgs *la, uint32_t ohN, uint32_t mask, u
             }
         }
     } else {
-        LOGGER->log_message(LogManager::ERROR, stdsprintf("Unexpected value for system release major: %i",fw_maj));
+        LOG4CPLUS_ERROR(logger, stdsprintf("Unexpected value for system release major: %i",fw_maj));
     }
 
     return;
@@ -587,7 +587,7 @@ void statusOH(const RPCMsg *request, RPCMsg *response)
     GETLOCALARGS(response);
 
     uint32_t ohEnMask = request->get_word("ohEnMask");
-    LOGGER->log_message(LogManager::INFO, "Reeading OH status");
+    LOG4CPLUS_INFO(logger, "Reeading OH status");
 
     statusOHLocal(&la, ohEnMask);
     rtxn.abort();

@@ -15,7 +15,7 @@ void measure_input_power(const RPCMsg *request, RPCMsg *response) {
 #ifndef WISCPARAM_SERIES_CTP7
 	// This is only written for the CTP7 at the moment.
 	response->set_string("error", "Unsupported function. CTP7 Only");
-	LOGGER->log_message(LogManager::INFO, "Unsupported function. CTP7 Only");
+	LOG4CPLUS_INFO(logger, "Unsupported function. CTP7 Only");
 	return;
 #endif
 
@@ -25,14 +25,14 @@ void measure_input_power(const RPCMsg *request, RPCMsg *response) {
 		int i2cfd = open(devnode, O_RDWR);
 		if (i2cfd < 0) {
 			response->set_string("error", stdsprintf("Unable to open %s", devnode));
-			LOGGER->log_message(LogManager::INFO, stdsprintf("Unable to open %s", devnode));
+			LOG4CPLUS_INFO(logger, stdsprintf("Unable to open %s", devnode));
 			close(i2cfd);
 			return;
 		}
 
 		if (i2c_write(i2cfd, 0x54, 127, reinterpret_cast<const uint8_t*>("\x01"), 1) != 1) {
 			response->set_string("error", "i2c write failure");
-			LOGGER->log_message(LogManager::INFO, "i2c write failure");
+			LOG4CPLUS_INFO(logger, "i2c write failure");
 			close(i2cfd);
 			return;
 		}
@@ -42,12 +42,12 @@ void measure_input_power(const RPCMsg *request, RPCMsg *response) {
 			uint16_t power;
 			if (i2c_read(i2cfd, 0x54, 206+(2*j), reinterpret_cast<uint8_t*>(&power), 2) != 2) {
 				response->set_string("error", "i2c read failure");
-				LOGGER->log_message(LogManager::INFO, "i2c read failure");
+				LOG4CPLUS_INFO(logger, "i2c read failure");
 				close(i2cfd);
 				return;
 			}
 			power = __builtin_bswap16(power);
-			LOGGER->log_message(LogManager::INFO, stdsprintf("raw value: 0x%04x = %u / 10 = %u", power, power, power/10));
+			LOG4CPLUS_INFO(logger, stdsprintf("raw value: 0x%04x = %u / 10 = %u", power, power, power/10));
 			power_readings.push_back(power/10);
 		}
 
@@ -58,7 +58,7 @@ void measure_input_power(const RPCMsg *request, RPCMsg *response) {
 	int i2cfd = open("/dev/i2c-1", O_RDWR);
 	if (i2cfd < 0) {
 		response->set_string("error", "Unable to open i2c-1");
-		LOGGER->log_message(LogManager::INFO, "Unable to open i2c-1");
+		LOG4CPLUS_INFO(logger, "Unable to open i2c-1");
 		close(i2cfd);
 		return;
 	}
@@ -69,7 +69,7 @@ void measure_input_power(const RPCMsg *request, RPCMsg *response) {
 			uint16_t power;
 			if (i2c_read(i2cfd, 0x30+i, 64+(2*j), reinterpret_cast<uint8_t*>(&power), 2) != 2) {
 				response->set_string("error", "i2c read failure");
-				LOGGER->log_message(LogManager::INFO, "i2c read failure");
+				LOG4CPLUS_INFO(logger, "i2c read failure");
 				close(i2cfd);
 				return;
 			}

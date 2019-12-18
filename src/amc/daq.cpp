@@ -9,7 +9,7 @@
 
 void enableDAQLinkLocal(localArgs* la, uint32_t const& enableMask)
 {
-  LOGGER->log_message(LogManager::DEBUG, "enableDAQLinkLocal called");
+  LOG4CPLUS_DEBUG(logger, "enableDAQLinkLocal called");
   // writeReg(la, "GEM_AMC.DAQ.CONTROL.INPUT_ENABLE_MASK", enableMask);
   writeReg(la, "GEM_AMC.DAQ.CONTROL.DAQ_ENABLE", 0x1);
   return;
@@ -33,7 +33,7 @@ void disableZSLocal(localArgs* la)
 
 void resetDAQLinkLocal(localArgs* la, uint32_t const& davTO, uint32_t const& ttsOverride)
 {
-  LOGGER->log_message(LogManager::DEBUG, "resetDAQLinkLocal called");
+  LOG4CPLUS_DEBUG(logger, "resetDAQLinkLocal called");
   writeReg(la, "GEM_AMC.DAQ.CONTROL.RESET", 0x1);
   writeReg(la, "GEM_AMC.DAQ.CONTROL.RESET", 0x0);
   // disableDAQLinkLocal(la);
@@ -46,13 +46,13 @@ void resetDAQLinkLocal(localArgs* la, uint32_t const& davTO, uint32_t const& tts
 
 uint32_t getDAQLinkControlLocal(localArgs* la)
 {
-  LOGGER->log_message(LogManager::WARNING,"getDAQLinkControl not implemented");
+  LOG4CPLUS_WARN(logger, "getDAQLinkControl not implemented");
   return 0x0;
 }
 
 uint32_t getDAQLinkStatusLocal(localArgs* la)
 {
-  LOGGER->log_message(LogManager::WARNING,"getDAQLinkStatus not implemented");
+  LOG4CPLUS_WARN(logger, "getDAQLinkStatus not implemented");
   return 0x0;
 }
 
@@ -113,7 +113,7 @@ uint32_t getDAQLinkL1AIDLocal(localArgs* la)
 
 uint32_t getDAQLinkL1ARateLocal(localArgs* la)
 {
-  LOGGER->log_message(LogManager::WARNING,"getDAQLinkL1ARate not implemented");
+  LOG4CPLUS_WARN(logger, "getDAQLinkL1ARate not implemented");
   return 0x0;
 }
 
@@ -152,19 +152,19 @@ uint32_t getDAQLinkDAVTimerLocal(localArgs* la, bool const& max)
 
 uint32_t getLinkDAQStatusLocal(localArgs* la, uint8_t const& gtx)
 {
-  LOGGER->log_message(LogManager::WARNING,"getLinkDAQStatus not implemented");
+  LOG4CPLUS_WARN(logger, "getLinkDAQStatus not implemented");
   return 0x0;
 }
 
 uint32_t getLinkDAQCountersLocal(localArgs* la, uint8_t const& gtx, uint8_t const& mode)
 {
-  LOGGER->log_message(LogManager::WARNING,"getLinkDAQCounters not implemented");
+  LOG4CPLUS_WARN(logger, "getLinkDAQCounters not implemented");
   return 0x0;
 }
 
 uint32_t getLinkLastDAQBlockLocal(localArgs* la, uint8_t const& gtx)
 {
-  LOGGER->log_message(LogManager::WARNING,"getLinkLastDAQBlock not implemented");
+  LOG4CPLUS_WARN(logger, "getLinkLastDAQBlock not implemented");
   return 0x0;
 }
 
@@ -193,7 +193,7 @@ uint32_t getDAQLinkRunParameterLocal(localArgs* la, uint8_t const& parameter)
 
 void setDAQLinkInputTimeoutLocal(localArgs* la, uint32_t const& inputTO)
 {
-  LOGGER->log_message(LogManager::WARNING,"setDAQLinkInputTimeout not implemented");
+  LOG4CPLUS_WARN(logger, "setDAQLinkInputTimeout not implemented");
 }
 
 void setDAQLinkRunTypeLocal(localArgs* la, uint32_t const& rtype)

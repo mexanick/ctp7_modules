@@ -29,7 +29,7 @@ void ttcMMCMPhaseShiftLocal(localArgs* la,
 
   std::stringstream msg;
   msg << "ttcMMCMPhaseShiftLocal: Starting phase shifting procedure";
-  LOGGER->log_message(LogManager::INFO, msg.str());
+  LOG4CPLUS_INFO(logger, msg.str());
 
   std::string strTTCCtrlBaseNode = "GEM_AMC.TTC.CTRL.";
   std::vector<std::pair<std::string, uint32_t> > vec_ttcCtrlRegs;
@@ -59,7 +59,7 @@ void ttcMMCMPhaseShiftLocal(localArgs* la,
              << " failed, value is " << readback
              << ", expected " << ttcRegIter->second;
 
-      LOGGER->log_message(LogManager::ERROR, "ttcMMCMPhaseShiftLocal: " + errmsg.str());
+      LOG4CPLUS_ERROR(logger, "ttcMMCMPhaseShiftLocal: " + errmsg.str());
       la->response->set_string("error", errmsg.str());
       return;
     }
@@ -68,7 +68,7 @@ void ttcMMCMPhaseShiftLocal(localArgs* la,
   if (readReg(la,strTTCCtrlBaseNode+"DISABLE_PHASE_ALIGNMENT") == 0x0) {
     std::stringstream errmsg;
     errmsg << "Automatic phase alignment is turned off!!";
-    LOGGER->log_message(LogManager::ERROR, "ttcMMCMPhaseShift: " + errmsg.str());
+    LOG4CPLUS_ERROR(logger, "ttcMMCMPhaseShift: " + errmsg.str());
     la->response->set_string("error", errmsg.str());
     return;
   }
@@ -114,13 +114,13 @@ void ttcMMCMPhaseShiftLocal(localArgs* la,
       msg.clear();
       msg.str(std::string());
       msg << "ttcMMCMPhaseShiftLocal: Normal GTH shift rollover 39->0";
-      LOGGER->log_message(LogManager::DEBUG,msg.str());
+      LOG4CPLUS_DEBUG(logger, msg.str());
       gthShiftCnt = 0;
     } else if (reversingForLock && (gthShiftCnt == 0)) {
       msg.clear();
       msg.str(std::string());
       msg << "ttcMMCMPhaseShiftLocal: Reversed GTH shift rollover 0->39";
-      LOGGER->log_message(LogManager::DEBUG, msg.str());
+      LOG4CPLUS_DEBUG(logger, msg.str());
       gthShiftCnt = 39;
     } else {
       if (reversingForLock) {
@@ -132,14 +132,14 @@ void ttcMMCMPhaseShiftLocal(localArgs* la,
 
     uint32_t tmpGthShiftCnt  = readReg(la,"GEM_AMC.TTC.STATUS.CLK.PA_MANUAL_GTH_SHIFT_CNT");
     uint32_t tmpMmcmShiftCnt = readReg(la,"GEM_AMC.TTC.STATUS.CLK.PA_MANUAL_SHIFT_CNT");
-    LOGGER->log_message(LogManager::INFO,stdsprintf("tmpGthShiftCnt: %i, tmpMmcmShiftCnt %i",tmpGthShiftCnt, tmpMmcmShiftCnt));
+    LOG4CPLUS_INFO(logger, stdsprintf("tmpGthShiftCnt: %i, tmpMmcmShiftCnt %i",tmpGthShiftCnt, tmpMmcmShiftCnt));
     while (gthShiftCnt != tmpGthShiftCnt) {
       msg.clear();
       msg.str(std::string());
       msg << "ttcMMCMPhaseShiftLocal: Repeating a GTH PI shift because the shift count doesn't match the expected value."
           << " Expected shift cnt = " << gthShiftCnt
           << ", ctp7 returned "       << tmpGthShiftCnt;
-      LOGGER->log_message(LogManager::WARNING, msg.str());
+      LOG4CPLUS_WARN(logger, msg.str());
 
       writeReg(la, "GEM_AMC.TTC.CTRL.PA_GTH_MANUAL_SHIFT_EN", 0x1);
       tmpGthShiftCnt = readReg(la,"GEM_AMC.TTC.STATUS.CLK.PA_MANUAL_GTH_SHIFT_CNT");
@@ -166,7 +166,7 @@ void ttcMMCMPhaseShiftLocal(localArgs* la,
         msg << "ttcMMCMPhaseShiftLocal: Reported MMCM shift count doesn't match the expected MMCM shift count."
             << " Expected shift cnt = " << mmcmShiftCnt
             << " , ctp7 returned "      << tmpMmcmShiftCnt;
-        LOGGER->log_message(LogManager::WARNING, msg.str());
+        LOG4CPLUS_WARN(logger, msg.str());
       }
     }
 
@@ -190,7 +190,7 @@ void ttcMMCMPhaseShiftLocal(localArgs* la,
       << ", gth phase counts = "  << gthPhase
       << ", gth phase = "         << gthPhaseNs << "ns"
       << ", PLL lock count = "    << pllLockCnt;
-    LOGGER->log_message(LogManager::DEBUG, msg.str());
+    LOG4CPLUS_DEBUG(logger, msg.str());
 
     if (modeBC0) {
       if (!firstUnlockFound) {
@@ -213,7 +213,7 @@ void ttcMMCMPhaseShiftLocal(localArgs* la,
                 << ", good locks "            << nGoodLocks
                 << ", mmcm phase count = "    << phase
                 << ", mmcm phase ns = "       << phaseNs << "ns";
-            LOGGER->log_message(LogManager::INFO, msg.str());
+            LOG4CPLUS_INFO(logger, msg.str());
           }
         } else {
           if (reversingForLock && (nBadLocks > 0)) {
@@ -223,7 +223,7 @@ void ttcMMCMPhaseShiftLocal(localArgs* la,
                 << " phase count = " << phase
                 << ", phase ns = "   << phaseNs << "ns"
                 << ", returning to normal search";
-            LOGGER->log_message(LogManager::DEBUG, msg.str());
+            LOG4CPLUS_DEBUG(logger, msg.str());
             writeReg(la,"GEM_AMC.TTC.CTRL.PA_MANUAL_SHIFT_DIR",1);
             writeReg(la,"GEM_AMC.TTC.CTRL.PA_GTH_MANUAL_SHIFT_DIR",0);
             bestLockFound    = false;
@@ -237,7 +237,7 @@ void ttcMMCMPhaseShiftLocal(localArgs* la,
                 << " phase count = " << phase
                 << ", phase ns = "   << phaseNs << "ns"
                 << ", reversing scan direction";
-            LOGGER->log_message(LogManager::INFO, msg.str());
+            LOG4CPLUS_INFO(logger, msg.str());
             writeReg(la,"GEM_AMC.TTC.CTRL.PA_MANUAL_SHIFT_DIR",0);
             writeReg(la,"GEM_AMC.TTC.CTRL.PA_GTH_MANUAL_SHIFT_DIR",1);
           }
@@ -248,7 +248,7 @@ void ttcMMCMPhaseShiftLocal(localArgs* la,
             msg << "ttcMMCMPhaseShiftLocal: Best lock found after reversing:"
                 << " phase count = " << phase
                 << ", phase ns = "   << phaseNs << "ns.";
-            LOGGER->log_message(LogManager::INFO, msg.str());
+            LOG4CPLUS_INFO(logger, msg.str());
             bestLockFound    = true;
             if (scan) {
               writeReg(la,"GEM_AMC.TTC.CTRL.PA_MANUAL_SHIFT_DIR",1);
@@ -271,7 +271,7 @@ void ttcMMCMPhaseShiftLocal(localArgs* la,
                 << ", good locks "            << nGoodLocks
                 << ", mmcm phase count = "    << phase
                 << ", mmcm phase ns = "       << phaseNs << "ns";
-            LOGGER->log_message(LogManager::DEBUG, msg.str());
+            LOG4CPLUS_DEBUG(logger, msg.str());
           }
           nBadLocks += 1;
         } else {
@@ -283,7 +283,7 @@ void ttcMMCMPhaseShiftLocal(localArgs* la,
                 << ", good locks "          << nGoodLocks
                 << ", mmcm phase count = "  << phase
                 << ", mmcm phase ns = "     << phaseNs << "ns";
-            LOGGER->log_message(LogManager::INFO, msg.str());
+            LOG4CPLUS_INFO(logger, msg.str());
             nextLockFound = true;
             nBadLocks   = 0;
           }
@@ -296,7 +296,7 @@ void ttcMMCMPhaseShiftLocal(localArgs* la,
           msg << "ttcMMCMPhaseShiftLocal: Finished 1920 shifts after first good lock: "
               << "bad locks "   << nBadLocks
               << " good locks " << nGoodLocks;
-          LOGGER->log_message(LogManager::INFO, msg.str());
+          LOG4CPLUS_INFO(logger, msg.str());
           bestLockFound = true;
           if (scan) {
             nextLockFound    = false;
@@ -330,7 +330,7 @@ void ttcMMCMPhaseShiftLocal(localArgs* la,
                 << ", good locks "            << nGoodLocks
                 << ", mmcm phase count = "    << phase
                 << ", mmcm phase ns = "       << phaseNs << "ns";
-            LOGGER->log_message(LogManager::DEBUG, msg.str());
+            LOG4CPLUS_DEBUG(logger, msg.str());
           } else {
             if (reversingForLock && (nBadLocks > 0)) {
               msg.clear();
@@ -339,7 +339,7 @@ void ttcMMCMPhaseShiftLocal(localArgs* la,
                   << " phase count = " << phase
                   << ", phase ns = "   << phaseNs << "ns"
                   << ", returning to normal search";
-              LOGGER->log_message(LogManager::DEBUG, msg.str());
+              LOG4CPLUS_DEBUG(logger, msg.str());
               writeReg(la,"GEM_AMC.TTC.CTRL.PA_MANUAL_SHIFT_DIR",1);
               writeReg(la,"GEM_AMC.TTC.CTRL.PA_GTH_MANUAL_SHIFT_DIR",0);
               bestLockFound    = false;
@@ -353,7 +353,7 @@ void ttcMMCMPhaseShiftLocal(localArgs* la,
                   << " phase count = " << phase
                   << ", phase ns = "   << phaseNs << "ns"
                   << ", reversing scan direction";
-              LOGGER->log_message(LogManager::INFO, msg.str());
+              LOG4CPLUS_INFO(logger, msg.str());
               writeReg(la,"GEM_AMC.TTC.CTRL.PA_MANUAL_SHIFT_DIR",0);
               writeReg(la,"GEM_AMC.TTC.CTRL.PA_GTH_MANUAL_SHIFT_DIR",1);
             }
@@ -364,7 +364,7 @@ void ttcMMCMPhaseShiftLocal(localArgs* la,
               msg << "ttcMMCMPhaseShiftLocal: Best lock found after reversing:"
                   << " phase count = " << phase
                   << ", phase ns = "   << phaseNs << "ns.";
-              LOGGER->log_message(LogManager::INFO, msg.str());
+              LOG4CPLUS_INFO(logger, msg.str());
               bestLockFound = true;
               if (scan) {
                 writeReg(la,"GEM_AMC.TTC.CTRL.PA_MANUAL_SHIFT_DIR",1);
@@ -388,7 +388,7 @@ void ttcMMCMPhaseShiftLocal(localArgs* la,
                 << ", good locks "            << nGoodLocks
                 << ", mmcm phase count = "    << phase
                 << ", mmcm phase ns = "       << phaseNs << "ns";
-            LOGGER->log_message(LogManager::WARNING, msg.str());
+            LOG4CPLUS_WARN(logger, msg.str());
             nBadLocks += 1;
           } else {
             if (!nextLockFound) {
@@ -399,7 +399,7 @@ void ttcMMCMPhaseShiftLocal(localArgs* la,
                   << ", good locks "          << nGoodLocks
                   << ", mmcm phase count = "  << phase
                   << ", mmcm phase ns = "     << phaseNs << "ns";
-              LOGGER->log_message(LogManager::INFO, msg.str());
+              LOG4CPLUS_INFO(logger, msg.str());
               nextLockFound = true;
               nBadLocks     = 0;
             }
@@ -412,7 +412,7 @@ void ttcMMCMPhaseShiftLocal(localArgs* la,
             msg << "ttcMMCMPhaseShiftLocal: Finished 1000 shifts after first good lock:"
                 << " bad locks "   << nBadLocks
                 << ", good locks " << nGoodLocks;
-            LOGGER->log_message(LogManager::INFO, msg.str());
+            LOG4CPLUS_INFO(logger, msg.str());
             bestLockFound = true;
             if (scan) {
               nextLockFound    = false;
@@ -437,7 +437,7 @@ void ttcMMCMPhaseShiftLocal(localArgs* la,
             << ", pllLockCnt = "          << pllLockCnt
             << ", firstUnlockFound = "    << firstUnlockFound
             << ", relock = " << relock;
-        LOGGER->log_message(LogManager::WARNING, msg.str());
+        LOG4CPLUS_WARN(logger, msg.str());
       }
 
       if (pllLockCnt == PLL_LOCK_READ_ATTEMPTS) {
@@ -450,7 +450,7 @@ void ttcMMCMPhaseShiftLocal(localArgs* la,
                 << " phase count = " << phase
                 << ", phase ns = "   << phaseNs << "ns"
                 << ", reversing scan direction";
-            LOGGER->log_message(LogManager::INFO, msg.str());
+            LOG4CPLUS_INFO(logger, msg.str());
             writeReg(la,"GEM_AMC.TTC.CTRL.PA_MANUAL_SHIFT_DIR",0);
             writeReg(la,"GEM_AMC.TTC.CTRL.PA_GTH_MANUAL_SHIFT_DIR",1);
           }
@@ -462,7 +462,7 @@ void ttcMMCMPhaseShiftLocal(localArgs* la,
                 << " phase count = " << phase
                 << ", phase ns = "   << phaseNs << "ns.";
 
-            LOGGER->log_message(LogManager::INFO, msg.str());
+            LOG4CPLUS_INFO(logger, msg.str());
             bestLockFound    = true;
             if (scan) {
               writeReg(la,"GEM_AMC.TTC.CTRL.PA_MANUAL_SHIFT_DIR",1);
@@ -484,7 +484,7 @@ void ttcMMCMPhaseShiftLocal(localArgs* la,
                 << ", good locks "          << nGoodLocks
                 << ", mmcm phase count = "  << phase
                 << ", mmcm phase ns = "     << phaseNs << "ns";
-            LOGGER->log_message(LogManager::DEBUG, msg.str());
+            LOG4CPLUS_DEBUG(logger, msg.str());
             nextLockFound = true;
           }
 
@@ -535,11 +535,11 @@ void ttcMMCMPhaseShiftLocal(localArgs* la,
     msg << "ttcMMCMPhaseShiftLocal: Lock was found: phase count " << phase
         << ", phase " << phaseNs << "ns";
 
-    LOGGER->log_message(LogManager::INFO, msg.str());
+    LOG4CPLUS_INFO(logger, msg.str());
   } else {
     std::stringstream errmsg;
     errmsg << "Unable to find lock";
-    LOGGER->log_message(LogManager::ERROR, "ttcMMCMPhaseShift: " + errmsg.str());
+    LOG4CPLUS_ERROR(logger, "ttcMMCMPhaseShift: " + errmsg.str());
     la->response->set_string("error",errmsg.str());
   }
 
@@ -551,7 +551,7 @@ int checkPLLLockLocal(localArgs* la, int readAttempts)
   uint32_t lockCnt = 0;
   std::stringstream msg;
   msg << "Executing checkPLLLock with " << readAttempts << " attempted relocks";
-  LOGGER->log_message(LogManager::DEBUG, msg.str());
+  LOG4CPLUS_DEBUG(logger, msg.str());
   for (int i = 0; i < readAttempts; ++i ) {
     writeReg(la,"GEM_AMC.TTC.CTRL.PA_MANUAL_PLL_RESET", 0x1);
 
@@ -599,7 +599,7 @@ double getGTHPhaseMeanLocal(localArgs* la, int readAttempts)
 
 double getMMCMPhaseMedianLocal(localArgs* la, int readAttempts)
 {
-  LOGGER->log_message(LogManager::WARNING,"getMMCMPhaseMedian not yet implemented");
+  LOG4CPLUS_WARN(logger, "getMMCMPhaseMedian not yet implemented");
   if (readAttempts < 1) {
     return double(readReg(la, "GEM_AMC.TTC.STATUS.CLK.TTC_PM_PHASE_MEAN"));
   } else if (readAttempts < 2) {
@@ -615,7 +615,7 @@ double getMMCMPhaseMedianLocal(localArgs* la, int readAttempts)
 
 double getGTHPhaseMedianLocal(localArgs* la, int readAttempts)
 {
-  LOGGER->log_message(LogManager::WARNING,"getGTHPhaseMedian not yet implemented, returning the mean");
+  LOG4CPLUS_WARN(logger, "getGTHPhaseMedian not yet implemented, returning the mean");
   if (readAttempts < 1) {
     return double(readReg(la, "GEM_AMC.TTC.STATUS.CLK.GTH_PM_PHASE_MEAN"));
   } else if (readAttempts < 2) {
@@ -648,7 +648,7 @@ void setL1AEnableLocal(localArgs* la,
 /*** CONFIG submodule ***/
 uint32_t getTTCConfigLocal(localArgs* la, uint8_t const& cmd)
 {
-  LOGGER->log_message(LogManager::WARNING,"getTTCConfig not implemented");
+  LOG4CPLUS_WARN(logger, "getTTCConfig not implemented");
   // return readReg(la, "GEM_AMC.TTC.CTRL.L1A_ENABLE");
   return 0x0;
 }
@@ -657,19 +657,19 @@ void setTTCConfigLocal(localArgs* la,
                        uint8_t const& cmd,
                        uint8_t const& value)
 {
-  LOGGER->log_message(LogManager::WARNING,"setTTCConfig not implemented");
+  LOG4CPLUS_WARN(logger, "setTTCConfig not implemented");
   // return writeReg(la, "GEM_AMC.TTC.CTRL.L1A_ENABLE",value);
 }
 
 /*** STATUS submodule ***/
 uint32_t getTTCStatusLocal(localArgs* la)
 {
-  LOGGER->log_message(LogManager::WARNING,"getTTCStatusLocal not fully implemented");
+  LOG4CPLUS_WARN(logger, "getTTCStatusLocal not fully implemented");
   // uint32_t retval = readReg(la, "GEM_AMC.TTC.STATUS");
   uint32_t retval = readReg(la, "GEM_AMC.TTC.STATUS.BC0.LOCKED");
   std::stringstream msg;
   msg << "getTTCStatusLocal TTC status reads " << std::hex << std::setw(8) << retval << std::dec;
-  LOGGER->log_message(LogManager::DEBUG,msg.str());
+  LOG4CPLUS_DEBUG(logger, msg.str());
   return retval;
 }
 
@@ -727,7 +727,7 @@ uint32_t getL1ARateLocal(localArgs* la)
 
 uint32_t getTTCSpyBufferLocal(localArgs* la)
 {
-  LOGGER->log_message(LogManager::WARNING,"getTTCSpyBuffer is obsolete");
+  LOG4CPLUS_WARN(logger, "getTTCSpyBuffer is obsolete");
   // return readReg(la,"GEM_AMC.TTC.TTC_SPY_BUFFER");
   return 0x0;
 }
@@ -771,7 +771,7 @@ void checkPLLLock(const RPCMsg *request, RPCMsg *response)
   std::stringstream msg;
   msg << "Checked PLL Locked Status " << readAttempts << " times."
       << " Found PLL Locked " << lockCnt << " times";
-  LOGGER->log_message(LogManager::INFO, msg.str());
+  LOG4CPLUS_INFO(logger, msg.str());
 
   response->set_word("lockCnt",lockCnt);
 

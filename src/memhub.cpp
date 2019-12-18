@@ -1,4 +1,10 @@
 #include "memhub.h"
+
+#include <log4cplus/logger.h>
+#include <log4cplus/loggingmacros.h>
+#include <log4cplus/configurator.h>
+#include <log4cplus/hierarchy.h>
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <semaphore.h>
@@ -16,15 +22,16 @@ static sem_t *semaphore = NULL;
 static bool busy = false;
 
 int memhub_open(memsvc_handle_t *handle) {
+    auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("main"));
     if (semaphore == NULL) {
         semaphore = sem_open(SEM_NAME, O_CREAT, SEM_PERMS, SEM_INIT);
         int semval = 0;
         sem_getvalue(semaphore, &semval);
         if (semval > 1) {
-            LOGGER->log_message(LogManager::INFO, stdsprintf("Invalid semaphore value = %d. Probably it was messed up by a dying process. Please clean up this semaphore (you can just delete /dev/shm/sem.memhub, I think)\n", semval));
+            LOG4CPLUS_INFO(logger, stdsprintf("Invalid semaphore value = %d. Probably it was messed up by a dying process. Please clean up this semaphore (you can just delete /dev/shm/sem.memhub, I think)\n", semval));
             exit(1);
         }
-        LOGGER->log_message(LogManager::INFO, stdsprintf("\nMemhub initialized a semaphore. Current semaphore value = %d\n", semval));
+        LOG4CPLUS_INFO(logger, stdsprintf("\nMemhub initialized a semaphore. Current semaphore value = %d\n", semval));
     }
     if (semaphore == SEM_FAILED) {
         perror("sem_open(3) error");
@@ -66,13 +73,14 @@ int memhub_write(memsvc_handle_t handle, uint32_t addr, uint32_t words, const ui
 }
 
 void die(int signo) {
+    auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("main"));
     int semval = 0;
     sem_getvalue(semaphore, &semval);
 
     if (busy && (semval == 0)) {
-        LOGGER->log_message(LogManager::ERROR, stdsprintf("[!] Application is dying, trying to undo an active semaphore..\n"));
+        LOG4CPLUS_ERROR(logger, stdsprintf("[!] Application is dying, trying to undo an active semaphore..\n"));
         sem_post(semaphore);
     }
-    LOGGER->log_message(LogManager::ERROR, stdsprintf("[!] Application was killed or died with signal %d (semaphore value at the time of the kill = %d)...\n", signo, semval));
+    LOG4CPLUS_ERROR(logger, stdsprintf("[!] Application was killed or died with signal %d (semaphore value at the time of the kill = %d)...\n", signo, semval));
     exit(1);
 }

@@ -27,17 +27,17 @@ unsigned int fw_version_check(const char* caller_name, localArgs *la)
     switch (iFWVersion) {
         case 1:
         {
-            LOGGER->log_message(LogManager::INFO, "System release major is 1, v2B electronics behavior");
+            LOG4CPLUS_INFO(logger, "System release major is 1, v2B electronics behavior");
             break;
         }
         case 3:
         {
-            LOGGER->log_message(LogManager::INFO, "System release major is 3, v3 electronics behavior");
+            LOG4CPLUS_INFO(logger, "System release major is 3, v3 electronics behavior");
             break;
         }
         default:
         {
-            LOGGER->log_message(LogManager::ERROR, "Unexpected value for system release major!");
+            LOG4CPLUS_ERROR(logger, "Unexpected value for system release major!");
             sprintf(regBuf,"Unexpected value for system release major!");
             la->response->set_string("error",regBuf);
             break;
@@ -66,7 +66,7 @@ void getOHVFATMask(const RPCMsg *request, RPCMsg *response) {
     uint32_t ohN = request->get_word("ohN");
 
     uint32_t vfatMask = getOHVFATMaskLocal(&la, ohN);
-    LOGGER->log_message(LogManager::INFO, stdsprintf("Determined VFAT Mask for OH%i to be 0x%x",ohN,vfatMask));
+    LOG4CPLUS_INFO(logger, stdsprintf("Determined VFAT Mask for OH%i to be 0x%x",ohN,vfatMask));
 
     response->set_word("vfatMask",vfatMask);
 
@@ -88,7 +88,7 @@ void getOHVFATMaskMultiLink(const RPCMsg *request, RPCMsg *response)
         if (NOH_requested <= NOH)
             NOH = NOH_requested;
         else
-            LOGGER->log_message(LogManager::WARNING, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register value (%i), NOH request will be disregarded",NOH_requested,NOH));
+            LOG4CPLUS_WARN(logger, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register value (%i), NOH request will be disregarded",NOH_requested,NOH));
     }
 
     uint32_t ohVfatMaskArray[amc::OH_PER_AMC];
@@ -100,14 +100,14 @@ void getOHVFATMaskMultiLink(const RPCMsg *request, RPCMsg *response)
         }
         else{
             ohVfatMaskArray[ohN] = getOHVFATMaskLocal(&la, ohN);
-            LOGGER->log_message(LogManager::INFO, stdsprintf("Determined VFAT Mask for OH%i to be 0x%x",ohN,ohVfatMaskArray[ohN]));
+            LOG4CPLUS_INFO(logger, stdsprintf("Determined VFAT Mask for OH%i to be 0x%x",ohN,ohVfatMaskArray[ohN]));
         }
     } //End Loop over all Optohybrids
 
     //Debugging
-    LOGGER->log_message(LogManager::DEBUG, "All VFAT Masks found, listing:");
+    LOG4CPLUS_DEBUG(logger, "All VFAT Masks found, listing:");
     for (unsigned int ohN=0; ohN<amc::OH_PER_AMC; ++ohN) {
-        LOGGER->log_message(LogManager::DEBUG, stdsprintf("VFAT Mask for OH%i to be 0x%x",ohN,ohVfatMaskArray[ohN]));
+        LOG4CPLUS_DEBUG(logger, stdsprintf("VFAT Mask for OH%i to be 0x%x",ohN,ohVfatMaskArray[ohN]));
     }
 
     response->set_word_array("ohVfatMaskArray",ohVfatMaskArray,amc::OH_PER_AMC);
@@ -125,7 +125,7 @@ void repeatedRegRead(const RPCMsg *request, RPCMsg *response)
     const std::vector<std::string> vec_regList = request->get_string_array("regList");
     slowCtrlErrCntVFAT vfatErrs;
     for (auto const & regIter : vec_regList){
-        LOGGER->log_message(LogManager::INFO,stdsprintf("attempting to repeatedly reading register %s for %i times",regIter.c_str(), nReads));
+        LOG4CPLUS_INFO(logger, stdsprintf("attempting to repeatedly reading register %s for %i times",regIter.c_str(), nReads));
         vfatErrs = vfatErrs + repeatedRegReadLocal(&la, regIter, breakOnFailure, nReads);
     } //End loop over registers in vec_regList
 
@@ -195,7 +195,7 @@ std::vector<uint32_t> sbitReadOutLocal(localArgs *la, uint32_t ohN, uint32_t acq
             bool isValid = (sbitAddress < 1536); //Possible values are [0,(24*64)-1]
 
             if (isValid) {
-                LOGGER->log_message(LogManager::INFO,stdsprintf("valid sbit data: thisClstr %x; sbitAddr %x;",thisCluster,sbitAddress));
+                LOG4CPLUS_INFO(logger, stdsprintf("valid sbit data: thisClstr %x; sbitAddr %x;",thisCluster,sbitAddress));
                 anyValid=true;
             }
 

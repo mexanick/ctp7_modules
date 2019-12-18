@@ -17,7 +17,7 @@
 
 void getmonTTCmainLocal(localArgs * la)
 {
-  LOGGER->log_message(LogManager::INFO, "Called getmonTTCmainLocal");
+  LOG4CPLUS_INFO(logger, "Called getmonTTCmainLocal");
   la->response->set_word("MMCM_LOCKED",readReg(la,"GEM_AMC.TTC.STATUS.CLK.MMCM_LOCKED"));
   la->response->set_word("TTC_SINGLE_ERROR_CNT",readReg(la,"GEM_AMC.TTC.STATUS.TTC_SINGLE_ERROR_CNT"));
   la->response->set_word("BC0_LOCKED",readReg(la,"GEM_AMC.TTC.STATUS.BC0.LOCKED"));
@@ -62,7 +62,7 @@ void getmonTRIGGERmain(const RPCMsg *request, RPCMsg *response)
   if (request->get_key_exists("NOH")) {
     unsigned int NOH_requested = request->get_word("NOH");
     if (NOH_requested > NOH) {
-      LOGGER->log_message(LogManager::WARNING, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register (%i)",NOH_requested,NOH));
+      LOG4CPLUS_WARN(logger, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register (%i)",NOH_requested,NOH));
       ohMask = ohMask & (0xfff >> (NOH_MAX-NOH));
     }
     NOH = NOH_requested;
@@ -138,7 +138,7 @@ void getmonTRIGGEROHmain(const RPCMsg *request, RPCMsg *response)
   if (request->get_key_exists("NOH")) {
     unsigned int NOH_requested = request->get_word("NOH");
     if (NOH_requested > NOH) {
-      LOGGER->log_message(LogManager::WARNING, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register (%i)",NOH_requested,NOH));
+      LOG4CPLUS_WARN(logger, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register (%i)",NOH_requested,NOH));
       ohMask = ohMask & (0xfff >> (NOH_MAX-NOH));
     }
     NOH = NOH_requested;
@@ -226,7 +226,7 @@ void getmonDAQOHmain(const RPCMsg *request, RPCMsg *response)
   if (request->get_key_exists("NOH")) {
     unsigned int NOH_requested = request->get_word("NOH");
     if (NOH_requested > NOH) {
-      LOGGER->log_message(LogManager::WARNING, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register (%i)",NOH_requested,NOH));
+      LOG4CPLUS_WARN(logger, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register (%i)",NOH_requested,NOH));
       ohMask = ohMask & (0xfff >> (NOH_MAX-NOH));
     }
     NOH = NOH_requested;
@@ -280,7 +280,7 @@ void getmonGBTLink(const RPCMsg *request, RPCMsg *response)
   if (request->get_key_exists("NOH")) {
     unsigned int NOH_requested = request->get_word("NOH");
     if (NOH_requested > NOH) {
-      LOGGER->log_message(LogManager::WARNING, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register (%i)",NOH_requested,NOH));
+      LOG4CPLUS_WARN(logger, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register (%i)",NOH_requested,NOH));
     }
     NOH = NOH_requested;
   }
@@ -303,7 +303,7 @@ void getmonOHLink(const RPCMsg *request, RPCMsg *response)
   if (request->get_key_exists("NOH")) {
     unsigned int NOH_requested = request->get_word("NOH");
     if (NOH_requested > NOH) {
-      LOGGER->log_message(LogManager::WARNING, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register (%i)",NOH_requested,NOH));
+      LOG4CPLUS_WARN(logger, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register (%i)",NOH_requested,NOH));
     }
     NOH = NOH_requested;
   }
@@ -352,16 +352,16 @@ void getmonOHmainLocal(localArgs * la, int NOH, int ohMask)
       uint32_t t_fwver=0xffffffff;
       t2 = stdsprintf("GEM_AMC.OH.OH%s.FPGA.CONTROL.RELEASE.VERSION.MAJOR",std::to_string(ohN).c_str());
       t_fwver = t_fwver & (0x00ffffff|(readReg(la,t2) << 24));
-      LOGGER->log_message(LogManager::INFO, stdsprintf("FW version MAJOR for OH%i is %08x, t_fwver is %08x ",ohN, readReg(la,t2), t_fwver));
+      LOG4CPLUS_INFO(logger, stdsprintf("FW version MAJOR for OH%i is %08x, t_fwver is %08x ",ohN, readReg(la,t2), t_fwver));
       t2 = stdsprintf("GEM_AMC.OH.OH%s.FPGA.CONTROL.RELEASE.VERSION.MINOR",std::to_string(ohN).c_str());
       t_fwver = t_fwver & (0xff00ffff|(readReg(la,t2) << 16));
-      LOGGER->log_message(LogManager::INFO, stdsprintf("FW version MINOR for OH%i is %08x, t_fwver is %08x ",ohN, readReg(la,t2), t_fwver));
+      LOG4CPLUS_INFO(logger, stdsprintf("FW version MINOR for OH%i is %08x, t_fwver is %08x ",ohN, readReg(la,t2), t_fwver));
       t2 = stdsprintf("GEM_AMC.OH.OH%s.FPGA.CONTROL.RELEASE.VERSION.BUILD",std::to_string(ohN).c_str());
       t_fwver = t_fwver & (0xffff00ff|(readReg(la,t2) << 8));
-      LOGGER->log_message(LogManager::INFO, stdsprintf("FW version BUILD for OH%i is %08x, t_fwver is %08x ",ohN, readReg(la,t2), t_fwver));
+      LOG4CPLUS_INFO(logger, stdsprintf("FW version BUILD for OH%i is %08x, t_fwver is %08x ",ohN, readReg(la,t2), t_fwver));
       t2 = stdsprintf("GEM_AMC.OH.OH%s.FPGA.CONTROL.RELEASE.VERSION.GENERATION",std::to_string(ohN).c_str());
       t_fwver = t_fwver & (0xffffff00|(readReg(la,t2)));
-      LOGGER->log_message(LogManager::INFO, stdsprintf("FW version GENERATION for OH%i is %08x, t_fwver is %08x ",ohN, readReg(la,t2), t_fwver));
+      LOG4CPLUS_INFO(logger, stdsprintf("FW version GENERATION for OH%i is %08x, t_fwver is %08x ",ohN, readReg(la,t2), t_fwver));
       la->response->set_word(t1,t_fwver);
     } else {
       t2 = stdsprintf("GEM_AMC.OH.OH%s.STATUS.FW.VERSION",std::to_string(ohN).c_str());
@@ -407,7 +407,7 @@ void getmonOHmain(const RPCMsg *request, RPCMsg *response)
   if (request->get_key_exists("NOH")) {
     unsigned int NOH_requested = request->get_word("NOH");
     if (NOH_requested > NOH) {
-      LOGGER->log_message(LogManager::WARNING, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register (%i)",NOH_requested,NOH));
+      LOG4CPLUS_WARN(logger, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register (%i)",NOH_requested,NOH));
       ohMask = ohMask & (0xfff >> (NOH_MAX-NOH));
     }
     NOH = NOH_requested;
@@ -474,7 +474,7 @@ void getmonOHSCAmainLocal(localArgs *la, int NOH, int ohMask)
         }
 
         //Log Message
-        LOGGER->log_message(LogManager::INFO, stdsprintf("Reading SCA Monitoring Values for OH%i",ohN));
+        LOG4CPLUS_INFO(logger, stdsprintf("Reading SCA Monitoring Values for OH%i",ohN));
 
         //SCA Temperature
         strRegName = stdsprintf("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.OH%i.SCA_TEMP",ohN);
@@ -558,7 +558,7 @@ void getmonOHSCAmain(const RPCMsg *request, RPCMsg *response)
   if (request->get_key_exists("NOH")) {
     unsigned int NOH_requested = request->get_word("NOH");
     if (NOH_requested > NOH) {
-      LOGGER->log_message(LogManager::WARNING, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register (%i)",NOH_requested,NOH));
+      LOG4CPLUS_WARN(logger, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register (%i)",NOH_requested,NOH));
       ohMask = ohMask & (0xfff >> (NOH_MAX-NOH));
     }
     NOH = NOH_requested;
@@ -610,11 +610,11 @@ void getmonOHSysmonLocal(localArgs *la, int NOH, int ohMask, bool doReset)
             strRegBase = stdsprintf("GEM_AMC.OH.OH%i.FPGA.ADC.CTRL.",ohN);
 
             //Log Message
-            LOGGER->log_message(LogManager::INFO, stdsprintf("Reading Sysmon Values for OH%i",ohN));
+            LOG4CPLUS_INFO(logger, stdsprintf("Reading Sysmon Values for OH%i",ohN));
 
             //Issue reset??
             if (doReset) {
-                LOGGER->log_message(LogManager::INFO, stdsprintf("Reseting CNT_OVERTEMP, CNT_VCCAUX_ALARM and CNT_VCCINT_ALARM for OH%i",ohN));
+                LOG4CPLUS_INFO(logger, stdsprintf("Reseting CNT_OVERTEMP, CNT_VCCAUX_ALARM and CNT_VCCINT_ALARM for OH%i",ohN));
                 writeReg(la, strRegBase+"RESET", 0x1);
             }
 
@@ -681,7 +681,7 @@ void getmonOHSysmonLocal(localArgs *la, int NOH, int ohMask, bool doReset)
             strRegBase = stdsprintf("GEM_AMC.OH.OH%i.ADC.",ohN);
 
             //Log Message
-            LOGGER->log_message(LogManager::INFO, stdsprintf("Reading Sysmon Values for OH%i",ohN));
+            LOG4CPLUS_INFO(logger, stdsprintf("Reading Sysmon Values for OH%i",ohN));
 
             //Read Sysmon Values - Core Temperature
             strKeyName = stdsprintf("OH%i.FPGA_CORE_TEMP",ohN);
@@ -713,7 +713,7 @@ void getmonOHSysmon(const RPCMsg *request, RPCMsg *response)
   if (request->get_key_exists("NOH")) {
     unsigned int NOH_requested = request->get_word("NOH");
     if (NOH_requested > NOH) {
-      LOGGER->log_message(LogManager::WARNING, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register (%i)",NOH_requested,NOH));
+      LOG4CPLUS_WARN(logger, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register (%i)",NOH_requested,NOH));
       ohMask = ohMask & (0xfff >> (NOH_MAX-NOH));
     }
     NOH = NOH_requested;
@@ -799,7 +799,7 @@ void getmonVFATLink(const RPCMsg *request, RPCMsg *response)
   if (request->get_key_exists("NOH")) {
     unsigned int NOH_requested = request->get_word("NOH");
     if (NOH_requested > NOH) {
-      LOGGER->log_message(LogManager::WARNING, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register (%i)",NOH_requested,NOH));
+      LOG4CPLUS_WARN(logger, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register (%i)",NOH_requested,NOH));
     }
     NOH = NOH_requested;
   }
@@ -823,12 +823,12 @@ void getmonCTP7dump(const RPCMsg *request, RPCMsg *response)
   }
   std::stringstream msg;
   msg << "Using registers" << fname;
-  LOGGER->log_message(LogManager::INFO, msg.str());
+  LOG4CPLUS_INFO(logger, msg.str());
   std::ifstream ifs(fname);
   if (!ifs) {
     std::stringstream errmsg;
     errmsg << "Error opening file: " << fname;
-    LOGGER->log_message(LogManager::ERROR, errmsg.str());
+    LOG4CPLUS_ERROR(logger, errmsg.str());
     response->set_string("error", errmsg.str());
     return;
   }
@@ -853,7 +853,7 @@ void getmonCTP7dump(const RPCMsg *request, RPCMsg *response)
         msg.str("");
         msg.clear();
         msg << "Pushing back " << token << " as value " << count << std::endl;
-        LOGGER->log_message(LogManager::DEBUG, msg.str());
+        LOG4CPLUS_DEBUG(logger, msg.str());
       }
       ++count;
     }

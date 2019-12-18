@@ -86,7 +86,7 @@ void configureVFAT3DacMonitor(const RPCMsg *request, RPCMsg *response){
     uint32_t vfatMask = request->get_word("vfatMask");
     uint32_t dacSelect = request->get_word("dacSelect");
 
-    LOGGER->log_message(LogManager::INFO, stdsprintf("Programming VFAT3 ADC Monitoring for Selection %i",dacSelect));
+    LOG4CPLUS_INFO(logger, stdsprintf("Programming VFAT3 ADC Monitoring for Selection %i",dacSelect));
     configureVFAT3DacMonitorLocal(&la, ohN, vfatMask, dacSelect);
 
     rtxn.abort();
@@ -104,7 +104,7 @@ void configureVFAT3DacMonitorMultiLink(const RPCMsg *request, RPCMsg *response){
         if (NOH_requested <= NOH)
             NOH = NOH_requested;
         else
-            LOGGER->log_message(LogManager::WARNING, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register value (%i), NOH request will be disregarded",NOH_requested,NOH));
+            LOG4CPLUS_WARN(logger, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register value (%i), NOH request will be disregarded",NOH_requested,NOH));
     }
     for(unsigned int ohN=0; ohN<NOH; ++ohN){
         // If this Optohybrid is masked skip it
@@ -115,7 +115,7 @@ void configureVFAT3DacMonitorMultiLink(const RPCMsg *request, RPCMsg *response){
         //Get VFAT Mask
         uint32_t vfatMask = getOHVFATMaskLocal(&la, ohN);
 
-        LOGGER->log_message(LogManager::INFO, stdsprintf("Programming VFAT3 ADC Monitoring on OH%i for Selection %i",ohN,dacSelect));
+        LOG4CPLUS_INFO(logger, stdsprintf("Programming VFAT3 ADC Monitoring on OH%i for Selection %i",ohN,dacSelect));
         configureVFAT3DacMonitorLocal(&la, ohN, vfatMask, dacSelect);
     } //End Loop over all Optohybrids
 
@@ -136,14 +136,14 @@ void configureVFAT3sLocal(localArgs * la, uint32_t ohN, uint32_t vfatMask) {
         return;
     }
 
-    LOGGER->log_message(LogManager::INFO, "Load configuration settings");
+    LOG4CPLUS_INFO(logger, "Load configuration settings");
     for(uint32_t vfatN = 0; vfatN < oh::VFATS_PER_OH; vfatN++) if((notmask >> vfatN) & 0x1)
     {
         std::string configFileBase = "/mnt/persistent/gemdaq/vfat3/config_OH"+std::to_string(ohN)+"_VFAT"+std::to_string(vfatN)+".txt";
         std::ifstream infile(configFileBase);
         if(!infile.is_open())
         {
-            LOGGER->log_message(LogManager::ERROR, "could not open config file "+configFileBase);
+            LOG4CPLUS_ERROR(logger, "could not open config file "+configFileBase);
             la->response->set_string("error", "could not open config file "+configFileBase);
             return;
         }
@@ -153,7 +153,7 @@ void configureVFAT3sLocal(localArgs * la, uint32_t ohN, uint32_t vfatMask) {
             std::string reg_basename = "GEM_AMC.OH.OH" + std::to_string(ohN) + ".GEB.VFAT"+std::to_string(vfatN)+".CFG_";
             std::stringstream iss(line);
             if (!(iss >> dacName >> dacVal)) {
-                LOGGER->log_message(LogManager::ERROR, "ERROR READING SETTINGS");
+                LOG4CPLUS_ERROR(logger, "ERROR READING SETTINGS");
                 la->response->set_string("error", "Error reading settings");
                 break;
             }
@@ -177,7 +177,7 @@ void configureVFAT3s(const RPCMsg *request, RPCMsg *response) {
 }
 
 void getChannelRegistersVFAT3(const RPCMsg *request, RPCMsg *response){
-    LOGGER->log_message(LogManager::INFO, "Getting VFAT3 Channel Registers");
+    LOG4CPLUS_INFO(logger, "Getting VFAT3 Channel Registers");
 
     GETLOCALARGS(response);
 
@@ -198,7 +198,7 @@ void getChannelRegistersVFAT3Local(localArgs *la, uint32_t ohN, uint32_t vfatMas
     uint32_t notmask = ~vfatMask & 0xFFFFFF;
 
     char regBuf[200];
-    LOGGER->log_message(LogManager::INFO, "Read channel register settings");
+    LOG4CPLUS_INFO(logger, "Read channel register settings");
     for(unsigned int vfatN=0; vfatN < oh::VFATS_PER_OH; ++vfatN){
         // Check if vfat is masked
         if(!((notmask >> vfatN) & 0x1)){
@@ -224,7 +224,7 @@ void getChannelRegistersVFAT3Local(localArgs *la, uint32_t ohN, uint32_t vfatMas
             chanAddr = getAddress(la, regBuf);
 
             //Build the channel register
-            LOGGER->log_message(LogManager::INFO, stdsprintf("Reading channel register for VFAT%i chan %i",vfatN,chan));
+            LOG4CPLUS_INFO(logger, stdsprintf("Reading channel register for VFAT%i chan %i",vfatN,chan));
             chanRegData[idx] = readRawAddress(chanAddr, la->response);
             std::this_thread::sleep_for(std::chrono::microseconds(200));
         } //End Loop over channels
@@ -257,7 +257,7 @@ void readVFAT3ADC(const RPCMsg *request, RPCMsg *response){
 
     uint32_t adcData[oh::VFATS_PER_OH];
 
-    LOGGER->log_message(LogManager::INFO, stdsprintf("Reading VFAT3 ADC's for OH%i with mask %x",ohN, vfatMask));
+    LOG4CPLUS_INFO(logger, stdsprintf("Reading VFAT3 ADC's for OH%i with mask %x",ohN, vfatMask));
     readVFAT3ADCLocal(&la, adcData, ohN, useExtRefADC, vfatMask);
 
     response->set_word_array("adcData",adcData,oh::VFATS_PER_OH);
@@ -277,7 +277,7 @@ void readVFAT3ADCMultiLink(const RPCMsg *request, RPCMsg *response){
         if (NOH_requested <= NOH)
             NOH = NOH_requested;
         else
-            LOGGER->log_message(LogManager::WARNING, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register value (%i), NOH request will be disregarded",NOH_requested,NOH));
+            LOG4CPLUS_WARN(logger, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register value (%i), NOH request will be disregarded",NOH_requested,NOH));
     }
     uint32_t adcData[oh::VFATS_PER_OH] = {0};
     uint32_t adcDataAll[amc::OH_PER_AMC*oh::VFATS_PER_OH] = {0};
@@ -287,7 +287,7 @@ void readVFAT3ADCMultiLink(const RPCMsg *request, RPCMsg *response){
             continue;
         }
 
-        LOGGER->log_message(LogManager::INFO, stdsprintf("Reading VFAT3 ADC Values for all chips on OH%i",ohN));
+        LOG4CPLUS_INFO(logger, stdsprintf("Reading VFAT3 ADC Values for all chips on OH%i",ohN));
 
         //Get VFAT Mask
         uint32_t vfatMask = getOHVFATMaskLocal(&la, ohN);
@@ -309,7 +309,7 @@ void setChannelRegistersVFAT3SimpleLocal(localArgs * la, uint32_t ohN, uint32_t 
     uint32_t notmask = ~vfatMask & 0xFFFFFF;
 
     char regBuf[200];
-    LOGGER->log_message(LogManager::INFO, "Write channel register settings");
+    LOG4CPLUS_INFO(logger, "Write channel register settings");
     for(unsigned int vfatN=0; vfatN < oh::VFATS_PER_OH; ++vfatN){
         // Check if vfat is masked
         if(!((notmask >> vfatN) & 0x1)){
@@ -346,7 +346,7 @@ void setChannelRegistersVFAT3Local(localArgs * la, uint32_t ohN, uint32_t vfatMa
     uint32_t notmask = ~vfatMask & 0xFFFFFF;
 
     char regBuf[200];
-    LOGGER->log_message(LogManager::INFO, "Write channel register settings");
+    LOG4CPLUS_INFO(logger, "Write channel register settings");
     for(unsigned int vfatN=0; vfatN < oh::VFATS_PER_OH; ++vfatN){
         // Check if vfat is masked
         if(!((notmask >> vfatN) & 0x1)){
@@ -385,7 +385,7 @@ void setChannelRegistersVFAT3Local(localArgs * la, uint32_t ohN, uint32_t vfatMa
             }
 
             //Build the channel register
-            LOGGER->log_message(LogManager::INFO, stdsprintf("Setting channel register for VFAT%i chan %i",vfatN,chan));
+            LOG4CPLUS_INFO(logger, stdsprintf("Setting channel register for VFAT%i chan %i",vfatN,chan));
             chanRegVal = (calEnable[idx] << 15) + (masks[idx] << 14) + \
                          (trimZCCPol[idx] << 13) + (trimZCC[idx] << 7) + \
                          (trimARMPol[idx] << 6) + (trimARM[idx]);
@@ -398,7 +398,7 @@ void setChannelRegistersVFAT3Local(localArgs * la, uint32_t ohN, uint32_t vfatMa
 } //end setChannelRegistersVFAT3Local()
 
 void setChannelRegistersVFAT3(const RPCMsg *request, RPCMsg *response){
-    LOGGER->log_message(LogManager::INFO, "Setting VFAT3 Channel Registers");
+    LOG4CPLUS_INFO(logger, "Setting VFAT3 Channel Registers");
 
     GETLOCALARGS(response);
 
@@ -482,7 +482,7 @@ void statusVFAT3s(const RPCMsg *request, RPCMsg *response)
     GETLOCALARGS(response);
 
     uint32_t ohN = request->get_word("ohN");
-    LOGGER->log_message(LogManager::INFO, "Reading VFAT3 status");
+    LOG4CPLUS_INFO(logger, "Reading VFAT3 status");
 
     statusVFAT3sLocal(&la, ohN);
     rtxn.abort();
@@ -596,7 +596,7 @@ void getVFAT3ChipIDsLocal(localArgs * la, uint32_t ohN, uint32_t vfatMask, bool 
           <<"(raw) or "
           << std::hex<<std::setw(8)<<std::setfill('0')<<decChipID<<std::dec
           << "(decoded)";
-      LOGGER->log_message(LogManager::INFO, msg.str());
+      LOG4CPLUS_INFO(logger, msg.str());
 
       if (rawID)
         la->response->set_word(regName,id);
@@ -606,7 +606,7 @@ void getVFAT3ChipIDsLocal(localArgs * la, uint32_t ohN, uint32_t vfatMask, bool 
       std::stringstream errmsg;
       errmsg << "Error decoding chipID: " << e.what()
              << ", returning raw chipID";
-      LOGGER->log_message(LogManager::ERROR,errmsg.str());
+      LOG4CPLUS_ERROR(logger,errmsg.str());
       la->response->set_word(regName,id);
     }
   }
@@ -620,7 +620,7 @@ void getVFAT3ChipIDs(const RPCMsg *request, RPCMsg *response)
   uint32_t ohN      = request->get_word("ohN");
   uint32_t vfatMask = request->get_word("vfatMask");
   bool rawID        = request->get_word("rawID");
-  LOGGER->log_message(LogManager::DEBUG, "Reading VFAT3 chipIDs");
+  LOG4CPLUS_DEBUG(logger, "Reading VFAT3 chipIDs");
 
   getVFAT3ChipIDsLocal(&la, ohN, vfatMask, rawID);
 

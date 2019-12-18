@@ -22,8 +22,8 @@ void mblockread(const RPCMsg *request, RPCMsg *response) {
 
   if (memhub_read(memsvc, addr, count, data) != 0) {
     response->set_string("error", memsvc_get_last_error(memsvc));
-    LOGGER->log_message(LogManager::INFO, stdsprintf("read memsvc error: %s",
-                                                     memsvc_get_last_error(memsvc)));
+    LOG4CPLUS_INFO(logger, stdsprintf("read memsvc error: %s",
+                                      memsvc_get_last_error(memsvc)));
     return;
   }
   response->set_word_array("data", data, count);
@@ -44,8 +44,8 @@ void mfiforead(const RPCMsg *request, RPCMsg *response) {
   for (unsigned int i=0; i<count; i++){
     if (memhub_read(memsvc, addr, 1, &data[i]) != 0) {
       response->set_string("error", memsvc_get_last_error(memsvc));
-      LOGGER->log_message(LogManager::INFO, stdsprintf("read memsvc error: %s",
-                                                       memsvc_get_last_error(memsvc)));
+      LOG4CPLUS_INFO(logger, stdsprintf("read memsvc error: %s",
+                                        memsvc_get_last_error(memsvc)));
       return;
     }
   }
@@ -66,8 +66,8 @@ void mlistread(const RPCMsg *request, RPCMsg *response) {
   for (unsigned int i=0; i<count; i++){
     if (memhub_read(memsvc, addr[i], 1, &data[i]) != 0) {
       response->set_string("error", memsvc_get_last_error(memsvc));
-      LOGGER->log_message(LogManager::INFO, stdsprintf("read memsvc error: %s",
-                                                       memsvc_get_last_error(memsvc)));
+      LOG4CPLUS_INFO(logger, stdsprintf("read memsvc error: %s",
+                                        memsvc_get_last_error(memsvc)));
       return;
     }
   }
@@ -87,8 +87,8 @@ void mblockwrite(const RPCMsg *request, RPCMsg *response) {
 
   if (memhub_write(memsvc, addr, count, data) != 0) {
     response->set_string("error", memsvc_get_last_error(memsvc));
-    LOGGER->log_message(LogManager::ERROR, stdsprintf("blockwrite memsvc error: %s",
-                                                      memsvc_get_last_error(memsvc)));
+    LOG4CPLUS_ERROR(logger, stdsprintf("blockwrite memsvc error: %s",
+                                       memsvc_get_last_error(memsvc)));
     // needs better error handling
     return;
   }
@@ -111,8 +111,8 @@ void mfifowrite(const RPCMsg *request, RPCMsg *response) {
   for (unsigned int i=0; i<count; i++){
     if (memhub_write(memsvc, addr, 1, &data[i]) != 0) {
       response->set_string("error", memsvc_get_last_error(memsvc));
-      LOGGER->log_message(LogManager::ERROR, stdsprintf("fifowrite memsvc error: %s",
-                                                        memsvc_get_last_error(memsvc)));
+      LOG4CPLUS_ERROR(logger, stdsprintf("fifowrite memsvc error: %s",
+                                         memsvc_get_last_error(memsvc)));
       // needs better error handling
       return;
     }
@@ -137,8 +137,8 @@ void mlistwrite(const RPCMsg *request, RPCMsg *response) {
   for (unsigned int i=0; i<count; i++){
     if (memhub_write(memsvc, addr[i], 1, &data[i]) != 0) {
       response->set_string("error", memsvc_get_last_error(memsvc));
-      LOGGER->log_message(LogManager::ERROR, stdsprintf("listwrite memsvc error: %s",
-                                                        memsvc_get_last_error(memsvc)));
+      LOG4CPLUS_ERROR(logger, stdsprintf("listwrite memsvc error: %s",
+                                         memsvc_get_last_error(memsvc)));
       // needs better error handling
       return;
     }
@@ -153,9 +153,9 @@ extern "C" {
   int module_activity_color = 4;
   void module_init(ModuleManager *modmgr) {
     if (memhub_open(&memsvc) != 0) {
-      LOGGER->log_message(LogManager::ERROR, stdsprintf("Unable to connect to memory service: %s",
-                                                        memsvc_get_last_error(memsvc)));
-      LOGGER->log_message(LogManager::ERROR, "Unable to load module");
+      LOG4CPLUS_ERROR(logger, stdsprintf("Unable to connect to memory service: %s",
+                                         memsvc_get_last_error(memsvc)));
+      LOG4CPLUS_ERROR(logger, "Unable to load module");
       return; // Do not register our functions, we depend on memsvc.
     }
     modmgr->register_method("extras", "fiforead",  mfiforead);

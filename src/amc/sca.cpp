@@ -283,7 +283,7 @@ void readSCAADCSensor(const RPCMsg *request, RPCMsg *response)
 
   int ohIdx = 0;
   for(auto const& val : result) {
-      LOGGER->log_message(LogManager::DEBUG, stdsprintf("Value for OH%i, SCA-ADC channel 0x%x = %i ",ohIdx, ch, val));
+      LOG4CPLUS_DEBUG(logger, stdsprintf("Value for OH%i, SCA-ADC channel 0x%x = %i ",ohIdx, ch, val));
       outData.push_back((bitCheck(ohMask, ohIdx)<<28) | (ohIdx<<24) | (ch<<16) | val);
       response->set_word_array("data",outData);
       ++ohIdx;
@@ -312,7 +312,7 @@ void readSCAADCTemperatureSensors(const RPCMsg *request, RPCMsg *response)
     result = scaADCCommand(&la, channelName, ohMask);
     ohIdx = 0;
     for(auto const& val : result) {
-    	LOGGER->log_message(LogManager::DEBUG, stdsprintf("Temperature for OH%i, SCA-ADC channel 0x%x = %i ",ohIdx, channelName, val));
+    	LOG4CPLUS_DEBUG(logger, stdsprintf("Temperature for OH%i, SCA-ADC channel 0x%x = %i ",ohIdx, channelName, val));
 	outData.push_back((bitCheck(ohMask, ohIdx)<<28) | (ohIdx<<24) | (channelName<<16) | val);
 	++ohIdx;
     }
@@ -344,7 +344,7 @@ void readSCAADCVoltageSensors(const RPCMsg *request, RPCMsg *response)
     result = scaADCCommand(&la, channelName, ohMask);
     ohIdx = 0;
     for(auto const& val : result) {
-        LOGGER->log_message(LogManager::DEBUG, stdsprintf("Voltage for OH%i, SCA-ADC channel 0x%x = %i ",ohIdx, channelName, val));
+        LOG4CPLUS_DEBUG(logger, stdsprintf("Voltage for OH%i, SCA-ADC channel 0x%x = %i ",ohIdx, channelName, val));
 	outData.push_back((bitCheck(ohMask, ohIdx)<<28) | (ohIdx<<24) | (channelName<<16) | val);
 	++ohIdx;
     }
@@ -374,7 +374,7 @@ void readSCAADCSignalStrengthSensors(const RPCMsg *request, RPCMsg *response)
     result = scaADCCommand(&la, channelName, ohMask);
     ohIdx = 0;
     for(auto const& val : result) {
-        LOGGER->log_message(LogManager::DEBUG, stdsprintf("Signal strength for OH%i, SCA-ADC channel 0x%x = %i ",ohIdx, channelName, val));
+        LOG4CPLUS_DEBUG(logger, stdsprintf("Signal strength for OH%i, SCA-ADC channel 0x%x = %i ",ohIdx, channelName, val));
 	outData.push_back((bitCheck(ohMask, ohIdx)<<28) | (ohIdx<<24) | (channelName<<16) | val);
 	++ohIdx;
     }
@@ -398,7 +398,7 @@ void readAllSCAADCSensors(const RPCMsg *request, RPCMsg *response)
     result = scaADCCommand(&la, channelName, ohMask);
     ohIdx = 0;
     for(auto const& val : result) {
-      LOGGER->log_message(LogManager::DEBUG, stdsprintf("Reading of OH%i, SCA-ADC channel 0x%x = %i ",ohIdx, channelName, val));
+      LOG4CPLUS_DEBUG(logger, stdsprintf("Reading of OH%i, SCA-ADC channel 0x%x = %i ",ohIdx, channelName, val));
       outData.push_back((bitCheck(ohMask, ohIdx)<<28) | (ohIdx<<24) | (channelName<<16) | val);
       ++ohIdx;
     }
