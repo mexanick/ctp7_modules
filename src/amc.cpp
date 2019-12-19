@@ -229,13 +229,13 @@ extern "C" {
         xhal::common::rpc::registerMethod<amc::ttc::getL1ARate>(modmgr);
         xhal::common::rpc::registerMethod<amc::ttc::getTTCSpyBuffer>(modmgr);
 
-        // // SCA module methods (from amc/sca)
-        // xhal::common::rpc::registerMethod<amc::sca::scaHardResetEnable>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::sca::readSCAADCSensor>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::sca::readSCAADCTemperatureSensors>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::sca::readSCAADCVoltageSensors>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::sca::readSCAADCSignalStrengthSensors>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::sca::readAllSCAADCSensors>(modmgr);
+        // SCA module methods (from amc/sca)
+        xhal::common::rpc::registerMethod<amc::sca::scaHardResetEnable>(modmgr);
+        xhal::common::rpc::registerMethod<amc::sca::readSCAADCSensor>(modmgr);
+        xhal::common::rpc::registerMethod<amc::sca::readSCAADCTemperatureSensors>(modmgr);
+        xhal::common::rpc::registerMethod<amc::sca::readSCAADCVoltageSensors>(modmgr);
+        xhal::common::rpc::registerMethod<amc::sca::readSCAADCSignalStrengthSensors>(modmgr);
+        xhal::common::rpc::registerMethod<amc::sca::readAllSCAADCSensors>(modmgr);
 
         // BLASTER RAM module methods (from amc/blaster_ram)
         xhal::common::rpc::registerMethod<amc::blaster::writeConfRAM>(modmgr);
