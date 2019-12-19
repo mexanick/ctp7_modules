@@ -9,162 +9,184 @@
 #define VFAT3_H
 
 #include "utils.h"
+#include "hw_constants.h"
+
+#include <map>
 #include <string>
+#include <vector>
 
-/*! \fn uint32_t vfatSyncCheckLocal(localArgs * la, uint32_t ohN)
- *  \brief Local callable version of vfatSyncCheck
- *  \param la Local arguments structure
- *  \param ohN Optohybrid optical link number
- *  \return Bitmask of sync'ed VFATs
- */
-uint32_t vfatSyncCheckLocal(localArgs * la, uint32_t ohN);
+namespace vfat3 {
 
-/*! \fn void vfatSyncCheck(const RPCMsg *request, RPCMsg *response)
- *  \brief Returns a list of synchronized VFAT chips
- *  \param request RPC request message
- *  \param response RPC responce message
- */
-void vfatSyncCheck(const RPCMsg *request, RPCMsg *response);
+  /*!
+   *  \brief Decode a Reed--Muller encoded VFAT3 ChipID
+   *
+   *  \param \c encChipID 32-bit encoded chip ID to decode
+   *
+   *  \returns decoded VFAT3 chip ID
+   */
+  uint16_t decodeChipID(const uint32_t &encChipID);
 
-/*! \fn void configureVFAT3DacMonitorLocal(localArgs *la, uint32_t ohN, uint32_t mask, uint32_t dacSelect)
- *  \brief configures the VFAT3s on optohybrid ohN to use their ADCs to monitor the DAC provided by dacSelect.
- *  \param la Local arguments structure
- *  \param ohN Optical link
- *  \param mask VFAT mask
- *  \param dacSelect the monitoring selection for the VFAT3 ADC, possible values are [0,16] and [32,41].  See VFAT3 manual for details
- */
-void configureVFAT3DacMonitorLocal(localArgs *la, uint32_t ohN, uint32_t mask, uint32_t dacSelect);
+  /*!
+   *  \brief Verify whether VFATs on a specified front end optical link are in sync
+   *
+   *  \param \c ohN OptoHybrid optical link number
+   *  \param \c mask VFAT mask, default is all VFATs unmasked
+   *
+   *  \returns Bitmask of sync'ed VFATs
+   */
+  struct vfatSyncCheck : public xhal::common::rpc::Method
+  {
+    uint32_t operator()(const uint16_t &ohN, const uint32_t &mask=0xff000000) const;
+  };
 
-/*! \fn void configureVFAT3DacMonitor(const RPCMsg *request, RPCMsg *response)
- *  \brief Allows the host machine to configure the VFAT3s on optohybrid ohN to use their ADCs to monitor a given DAC
- *  \param request RPC request message
- *  \param response RPC responce message
- */
-void configureVFAT3DacMonitor(const RPCMsg *request, RPCMsg *response);
+  /*!
+   *  \brief configures the VFAT3s on optohybrid ohN to use their ADCs to monitor the DAC provided by dacSelect.
+   *
+   *  \param \c ohN OptoHybrid optical link number
+   *  \param \c mask VFAT mask, default is all VFATs unmasked
+   *  \param \c dacSelect the monitoring selection for the VFAT3 ADC, possible values are [0,16] and [32,41].  See VFAT3 manual for details
+   */
+  struct configureVFAT3DACMonitor : public xhal::common::rpc::Method
+  {
+    void operator()(const uint16_t &ohN, const uint32_t &mask, const uint32_t &dacSelect) const;
+  };
 
-/*! \fn void configureVFAT3DacMonitorMultiLink(const RPCMsg *request, RPCMsg *response)
- *  \brief As configureVFAT3DacMonitor(...) but for all optical links specified in ohMask on the AMC
- *  \details Here the RPCMsg request should have a "ohMask" word which specifies which OH's to read from, this is a 12 bit number where a 1 in the n^th bit indicates that the n^th OH should be read back.  Additionally there should be a "ohVfatMaskArray" which is an array of size 12 where each element is the standard vfatMask for OH specified by the array index.
- *  \param request RPC request message
- *  \param response RPC responce message
- */
-void configureVFAT3DacMonitorMultiLink(const RPCMsg *request, RPCMsg *response);
+  /*!
+   *  \brief As \ref \c configureVFAT3DACMonitor but for all optical links specified in \c ohMask on the AMC
+   *
+   *  \param \c ohMask specifies which OptoHybrids to read from, this is a 12 bit number where a 1 in the n^th bit indicates that the n^th OH should be read back.
+   *  \param \c vfatMasks is an array of size 12 where each element is the standard vfatMask for OH specified by the array index.
+   *  \param \c dacSelect the monitoring selection for the VFAT3 ADC, possible values are [0,16] and [32,41].  See VFAT3 manual for details
+   */
+  struct configureVFAT3DACMonitorMultiLink : public xhal::common::rpc::Method
+  {
+    void operator()(const uint16_t &ohMask, const std::array<uint32_t, amc::OH_PER_AMC> & vfatMasks, const uint32_t &dacSelect) const;
+  };
 
-/*! \fn void configureVFAT3sLocal(localArgs * la, uint32_t ohN, uint32_t vfatMask)
- *  \brief Local callable version of configureVFAT3s
- *  \param la Local arguments structure
- *  \param ohN Optohybrid optical link number
- *  \param vfatMask Bitmask of chip positions determining which chips to use
- */
-void configureVFAT3sLocal(localArgs * la, uint32_t ohN, uint32_t vfatMask);
+  /*!
+   *  \brief Configures VFAT3 chips
+   *
+   *  \details VFAT configurations are stored in files under \c /mnt/persistent/gemdaq/vfat3/config_OHX_VFATY.txt. Has to be updated later.
+   *
+   *  \param \c ohN OptoHybrid optical link number
+   *  \param \c vfatMask VFAT mask, default is all VFATs unmasked
+   */
+  struct configureVFAT3s : public xhal::common::rpc::Method
+  {
+    void operator()(const uint16_t &ohN, const uint32_t &vfatMask=0xff000000) const;
+  };
 
-/*! \fn void configureVFAT3s(const RPCMsg *request, RPCMsg *response)
- *  \brief Configures VFAT3 chips
- *
- *  VFAT configurations are sored in files under /mnt/persistent/gemdaq/vfat3/config_OHX_VFATY.txt. Has to be updated later.
- *
- *  \param request RPC request message
- *  \param response RPC responce message
- */
-void configureVFAT3s(const RPCMsg *request, RPCMsg *response);
+  /*!
+   *  \brief reads all channel registers for unmasked vfats and stores values in chanRegData
+   *
+   *  \param \c ohN OptoHybrid optical link number
+   *  \param \c vfatMask VFAT mask, default is all VFATs unmasked
+   *
+   *  \returns \c std::vector<uint32_t> containing channel registers with idx = vfatN * 128 + chan
+   */
+  struct getChannelRegistersVFAT3 : public xhal::common::rpc::Method
+  {
+    std::vector<uint32_t> operator()(const uint16_t &ohN, const uint32_t &vfatMask=0xff000000) const;
+  };
 
-/*! \fn void getChannelRegistersVFAT3Local(localArgs *la, uint32_t ohN, uint32_t mask, uint32_t *chanRegData)
- *  \brief reads all channel registers for unmasked vfats and stores values in chanRegData
- *  \param la Local arguments structure
- *  \param ohN Optical link
- *  \param mask VFAT mask
- *  \param chanRegData pointer to the container holding channel registers; expected to be an array of 3072 channels with idx = vfatN * 128 + chan
- */
-void getChannelRegistersVFAT3Local(localArgs *la, uint32_t ohN, uint32_t mask, uint32_t *chanRegData);
+  /*!
+   *  \brief reads the ADC of all unmasked VFATs
+   *
+   *  \param \c ohN OptoHybrid optical link number
+   *  \param \c useExtRefADC true (false) read the ADC1 (ADC0) which uses an external (internal) reference
+   *  \param \c vfatMask VFAT mask, default is all VFATs unmasked //FIXME deprecate
+   *
+   *  \returns \c std::vector<uint32_t> containing the ADC results
+   */
+  struct readVFAT3ADC : public xhal::common::rpc::Method
+  {
+    std::vector<uint32_t> operator()(const uint16_t &ohN, const bool &useExtRefADC=false, const uint32_t &vfatMask=0xff000000) const;
+  };
 
-/*! \fn void setChannelRegistersVFAT3(const RPCMsg *request, RPCMsg *response);
- *  \brief reads all vfat3 channel registers from host machine
- *  \param request RPC request message
- *  \param response RPC responce message
- */
-void getChannelRegistersVFAT3(const RPCMsg *request, RPCMsg *response);
 
-/*! \fn void readVFAT3ADCLocal(localArgs * la, uint32_t * outData, uint32_t ohN, bool useExtRefADC=false, uint32_t mask=0xFF000000)
- *  \brief reads the ADC of all unmasked VFATs
- *  \param la Local arguments structure
- *  \param outData pointer to the array containing the ADC results
- *  \param ohN Optical link
- *  \param useExtRefADC true (false) read the ADC1 (ADC0) which uses an external (internal) reference
- *  \param mask VFAT mask
- */
-void readVFAT3ADCLocal(localArgs * la, uint32_t * outData, uint32_t ohN, bool useExtRefADC=false, uint32_t mask=0xFF000000);
+  /*!
+   *  \brief As readVFAT3ADC(...) but for all optical links specified in ohMask on the AMC
+   *
+   *  \param \c ohMask specifies which OptoHybrids to read from, this is a 12 bit number where a 1 in the n^th bit indicates that the n^th OH should be read back.
+   *  \param \c useExtRefADC true (false) read the ADC1 (ADC0) which uses an external (internal) reference
+   *  \param \c ohVfatMaskArray which is an array of size 12 where each element is the standard vfatMask for OH specified by the array index. //FIXME deprecate
+   *
+   *  \returns \c std::map whose keys are the OH number and the data is an std::vector<uint32_t> containing the requested ADC data
+   */
+  struct readVFAT3ADCMultiLink : public xhal::common::rpc::Method
+  {
+    std::map<uint32_t,std::vector<uint32_t>> operator()(const uint16_t &ohMask, const bool &useExtRefADC) const;
+  };
 
-/*! \fn readVFAT3ADC(const RPCMsg *request, RPCMsg *response)
- *  \brief Allows the host machine to read the ADC value from all unmasked VFATs
- *  \param request RPC request message
- *  \param response RPC responce message
- */
-void readVFAT3ADC(const RPCMsg *request, RPCMsg *response);
+  /*!
+   *  \brief Writes all VFAT3 channel registers based on the channel register
+   *
+   *  \description The channel setting vector should contain VFATS_PER_OH*NUM_CHANS entries.
+   *               The (vfatN,ch) pairing determines the index via: idx = vfatN*128 + ch
+   *
+   *  \param \c ohN OptoHybrid optical link number
+   *  \param \c chanRegData contains the channel registers
+   *  \param \c vfatMask VFAT mask, default is all VFATs unmasked
+   */
+  struct setChannelRegistersVFAT3Simple : public xhal::common::rpc::Method
+  {
+    void operator()(const uint16_t &ohN, const std::vector<uint32_t> &chanRegData, const uint32_t &vfatMask=0xff000000) const;
+  };
 
-/*! \fn void readVFAT3ADCMultiLink(const RPCMsg *request, RPCMsg *response);
- *  \brief As readVFAT3ADC(...) but for all optical links specified in ohMask on the AMC
- *  \details Here the RPCMsg request should have a "ohMask" word which specifies which OH's to read from, this is a 12 bit number where a 1 in the n^th bit indicates that the n^th OH should be read back.  Additionally there should be a "ohVfatMaskArray" which is an array of size 12 where each element is the standard vfatMask for OH specified by the array index.
- *  \param request RPC request message
- *  \param response RPC responce message
- */
-void readVFAT3ADCMultiLink(const RPCMsg *request, RPCMsg *response);
+  /*!
+   *  \brief Writes all VFAT3 channel registers based on the bits in the channel register
+   *
+   *  \description Each vector should contain VFATS_PER_OH*NUM_CHANS entries.
+   *               The (vfatN,ch) pairing determines the index via: idx = vfatN*128 + ch
+   *
+   *  \param \c ohN OptoHybrid optical link number
+   *  \param \c vfatMask VFAT mask, default is all VFATs unmasked
+   *  \param \c calEnable contains the calibration pulse enable settings
+   *  \param \c masks contains the channel mask settings
+   *  \param \c trimARM contains the ARM DAC channel trim settings
+   *  \param \c trimARMPol contains the ARM DAC channel polarity settings
+   *  \param \c trimZCC contains the ZCC DAC channel trim settings
+   *  \param \c trimZCCPol contains the ZCC DAC channel polarity settings
+   */
+  struct setChannelRegistersVFAT3 : public xhal::common::rpc::Method
+  {
+    void operator()(const uint16_t &ohN,
+                    const std::vector<uint32_t> &calEnable,
+                    const std::vector<uint32_t> &masks,
+                    const std::vector<uint32_t> &trimARM,
+                    const std::vector<uint32_t> &trimARMPol,
+                    const std::vector<uint32_t> &trimZCC,
+                    const std::vector<uint32_t> &trimZCCPol,
+                    const uint32_t &vfatMask=0xff000000)
+      const;
+  };
 
-/*! \fn void setChannelRegistersVFAT3SimpleLocal(localArgs * la, uint32_t ohN, uint32_t vfatMask, uint32_t *chanRegData)
- *  \brief writes all vfat3 channel registers from AMC
- *  \param la Local arguments structure
- *  \param ohN Optical link
- *  \param vfatMask VFAT mask
- *  \param chanRegData pointer to the container holding channel registers; expected to be an array of 3072 channels with idx = vfatN * 128 + chan
- */
-void setChannelRegistersVFAT3SimpleLocal(localArgs * la, uint32_t ohN, uint32_t vfatMask, uint32_t *chanRegData);
+  /*!
+   *  \brief
+   *
+   *  \param \c ohN OptoHybrid optical link number
+   *
+   *  \returns \c std::map whose keys are the register name and whose values are std::vector<uint32_t> of the values for each VFAT
+   */
+  struct statusVFAT3s : public xhal::common::rpc::Method
+  {
+    std::map<std::string, std::vector<uint32_t>> operator()(const uint16_t &ohN) const;
+  };
 
-/*! \fn void setChannelRegistersVFAT3Local(localArgs * la, uint32_t ohN, uint32_t vfatMask, uint32_t *calEnable, uint32_t *masks, uint32_t *trimARM, uint32_t *trimARMPol, uint32_t *trimZCC, uint32_t *trimZCCPol);
- *  \brief writes all vfat3 channel registers from AMC
- *  \param ohN Optohybrid optical link number
- *  \param vfatMask Bitmask of chip positions determining which chips to use
- *  \param calEnable array pointer for calEnable with 3072 entries, the (vfat,chan) pairing determines the array index via: idx = vfat*128 + chan
- *  \param masks as calEnable but for channel masks
- *  \param trimARM as calEnable but for arming comparator trim value
- *  \param trimARMPol as calEnable but for arming comparator trim polarity
- *  \param trimZCC as calEnable but for zero crossing comparator trim value
- *  \param trimZCCPol as calEnable but for zero crossing comparator trim polarity
- */
-void setChannelRegistersVFAT3Local(localArgs * la, uint32_t ohN, uint32_t vfatMask, uint32_t *calEnable, uint32_t *masks, uint32_t *trimARM, uint32_t *trimARMPol, uint32_t *trimZCC, uint32_t *trimZCCPol);
+  /*!
+   *  \brief Returns list of values of the most important VFAT3 register
+   *
+   *  \param \c ohN OptoHybrid optical link number
+   *  \param \c vfatMask VFAT mask, default is all VFATs unmasked
+   *  \param \c rawID if true, do not perform Reed--Muller decoding of the read chip ID (default is false)
+   *
+   *  \returns \c std::vector containing the chipID values, indexed by the VFAT position number
+   */
+  struct getVFAT3ChipIDs : public xhal::common::rpc::Method
+  {
+    std::vector<uint32_t> operator()(const uint16_t &ohN, const uint32_t &vfatMask=0xff000000, const bool &rawID=false) const;
+  };
 
-/*! \fn void setChannelRegistersVFAT3(const RPCMsg *request, RPCMsg *response);
- *  \brief writes all vfat3 channel registers from host machine
- *  \param request RPC request message
- *  \param response RPC responce message
- */
-void setChannelRegistersVFAT3(const RPCMsg *request, RPCMsg *response);
-
-/*! \fn void statusVFAT3sLocal(localArgs * la, uint32_t ohN)
- *  \brief Local callable version of statusVFAT3s
- *  \param la Local arguments structure
- *  \param ohN Optohybrid optical link number
- */
-void statusVFAT3sLocal(localArgs * la, uint32_t ohN);
-
-/*! \fn void statusVFAT3s(const RPCMsg *request, RPCMsg *response)
- *  \brief Returns list of values of the most important VFAT3 register
- *  \param request RPC request message
- *  \param response RPC responce message
- */
-void statusVFAT3s(const RPCMsg *request, RPCMsg *response);
-
-/*!
- *  \brief Decode a Reed--Muller encoded VFAT3 ChipID
- *  \param encChipID 32-bit encoded chip ID to decode
- *  \return decoded VFAT3 chip ID
- */
-uint16_t decodeChipID(uint32_t encChipID);
-
-/*! \fn void statusVFAT3s(const RPCMsg *request, RPCMsg *response)
- *  \brief Returns list of values of the most important VFAT3 register
- *  \param request RPC request message
- *  \param response RPC responce message
- */
-void getVFAT3ChipIDsLocal(localArgs * la, uint32_t ohN, uint32_t vfatMask=0xFF000000, bool rawID=false);
-void getVFAT3ChipIDs(const RPCMsg *request, RPCMsg *response);
+}
 
 #endif
