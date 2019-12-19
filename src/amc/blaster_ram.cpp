@@ -4,29 +4,34 @@
 
 #include "amc/blaster_ram.h"
 
+#include "hw_constants.h"
+
 #include <chrono>
 #include <iomanip>
 #include <string>
 #include <time.h>
 #include <thread>
-#include <vector>
 
-#include "hw_constants.h"
+namespace amc {
+  namespace blaster {
+    auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("logger"));
+  }
+}
 
-uint32_t getRAMMaxSize(localArgs *la, BLASTERTypeT const& type)
+uint32_t amc::blaster::getRAMMaxSize::operator()(BLASTERTypeT const& type) const
 {
   uint32_t ram_size = 0x0;
   switch (type) {
   case (BLASTERType::GBT) :
-    return readReg(la, "GEM_AMC.CONFIG_BLASTER.STATUS.GBT_RAM_SIZE");
+    return utils::readReg("GEM_AMC.CONFIG_BLASTER.STATUS.GBT_RAM_SIZE");
   case (BLASTERType::OptoHybrid) :
-    return readReg(la, "GEM_AMC.CONFIG_BLASTER.STATUS.OH_RAM_SIZE");
+    return utils::readReg("GEM_AMC.CONFIG_BLASTER.STATUS.OH_RAM_SIZE");
   case (BLASTERType::VFAT) :
-    return readReg(la, "GEM_AMC.CONFIG_BLASTER.STATUS.VFAT_RAM_SIZE");
+    return utils::readReg("GEM_AMC.CONFIG_BLASTER.STATUS.VFAT_RAM_SIZE");
   case (BLASTERType::ALL) :
-    ram_size  = getRAMMaxSize(la, BLASTERType::GBT);
-    ram_size += getRAMMaxSize(la, BLASTERType::OptoHybrid);
-    ram_size += getRAMMaxSize(la, BLASTERType::VFAT);
+    ram_size  = getRAMMaxSize{}(BLASTERType::GBT);
+    ram_size += getRAMMaxSize{}(BLASTERType::OptoHybrid);
+    ram_size += getRAMMaxSize{}(BLASTERType::VFAT);
     return ram_size;
   default:
     break;
@@ -41,17 +46,27 @@ uint32_t getRAMMaxSize(localArgs *la, BLASTERTypeT const& type)
   // return ram_size;
 }
 
-bool checkBLOBSize(localArgs *la, BLASTERTypeT const& type, size_t const& sz)
+bool amc::blaster::checkBLOBSize(BLASTERTypeT const& type, size_t const& sz)
 {
-  uint32_t ram_sz = getRAMMaxSize(la, type);
+  uint32_t ram_sz = getRAMMaxSize{}(type);
   bool valid = (sz == ram_sz) ? true : false;
   return valid;
 }
 
-uint32_t getRAMBaseAddr(localArgs *la, BLASTERTypeT const& type, uint8_t const& ohN, uint8_t const& partN)
+uint32_t amc::blaster::getRAMBaseAddr(BLASTERTypeT const& type, uint8_t const& ohN, uint8_t const& partN)
 {
   uint32_t base = 0x0;
   std::string regName;
+
+  // FIXME should we have a check on supported OptoHybrids here?
+
+  if (ohN > (amc::OH_PER_AMC-1)) {
+    std::stringstream errmsg;
+    errmsg << "Invalid OptoHybrid specified: OH" << ohN << " > " << (amc::OH_PER_AMC-1);
+    LOG4CPLUS_ERROR(logger, errmsg.str());
+    throw std::range_error(errmsg.str());
+  }
+
   switch (type) {
   case (BLASTERType::GBT) :
     if (partN > (gbt::GBTS_PER_OH-1)) {
@@ -60,13 +75,13 @@ uint32_t getRAMBaseAddr(localArgs *la, BLASTERTypeT const& type, uint8_t const& 
       LOG4CPLUS_ERROR(logger, errmsg.str());
       throw std::range_error(errmsg.str());
     }
-    regName = stdsprintf("GEM_AMC.CONFIG_BLASTER.RAM.GBT_OH%d",int(ohN));
-    base = getAddress(la, regName);
-    base += gbt::GBT_SINGLE_RAM_SIZE*partN;
+    regName = "GEM_AMC.CONFIG_BLASTER.RAM.GBT_OH" + std::to_string(ohN);
+    base = utils::getAddress(regName);
+    base+= gbt::GBT_SINGLE_RAM_SIZE*partN;
     return base;
   case (BLASTERType::OptoHybrid) :
-    regName = stdsprintf("GEM_AMC.CONFIG_BLASTER.RAM.OH_FPGA_OH%d",int(ohN));
-    base = getAddress(la, regName);
+    regName = "GEM_AMC.CONFIG_BLASTER.RAM.OH_FPGA_OH" + std::to_string(ohN);
+    base    = utils::getAddress(regName);
     return base;
   case (BLASTERType::VFAT) :
     if (partN > (oh::VFATS_PER_OH-1)) {
@@ -75,9 +90,9 @@ uint32_t getRAMBaseAddr(localArgs *la, BLASTERTypeT const& type, uint8_t const& 
       LOG4CPLUS_ERROR(logger, errmsg.str());
       throw std::range_error(errmsg.str());
     }
-    regName = stdsprintf("GEM_AMC.CONFIG_BLASTER.RAM.VFAT_OH%d",int(ohN));
-    base = getAddress(la, regName);
-    base += vfat::VFAT_SINGLE_RAM_SIZE*partN;
+    regName = "GEM_AMC.CONFIG_BLASTER.RAM.VFAT_OH" + std::to_string(ohN);
+    base = utils::getAddress(regName);
+    base+= vfat::VFAT_SINGLE_RAM_SIZE*partN;
     return base;
   default:
     break;
@@ -89,247 +104,245 @@ uint32_t getRAMBaseAddr(localArgs *la, BLASTERTypeT const& type, uint8_t const& 
   throw std::runtime_error(errmsg.str());
 }
 
-uint32_t readConfRAMLocal(localArgs *la, BLASTERTypeT const& type, uint32_t* blob, size_t const& blob_sz)
+std::vector<uint32_t> amc::blaster::readConfRAM::operator()(BLASTERTypeT const& type, size_t const& blob_sz) const
 {
   uint32_t nwords = 0x0;
   // uint32_t offset = 0x0;
 
-  if (!checkBLOBSize(la, type, blob_sz)) {
+  if (!checkBLOBSize(type, blob_sz)) {
     std::stringstream errmsg;
     errmsg << "Invalid size " << blob_sz << " for BLASTER RAM BLOB";
     LOG4CPLUS_ERROR(logger, errmsg.str());
-    // FIXME throw? or return 0?
-    // throw std::runtime_error(errmsg.str());
-    return nwords;
+    throw std::runtime_error(errmsg.str());
   }
 
-  // do basic memory validation on blob
-  if (!blob) {
-    std::stringstream errmsg;
-    errmsg << "Invalid BLOB " << std::hex << std::setw(8) << std::setfill('0') << blob
-           << std::dec << " provided to write BLASTER RAM";
-    LOG4CPLUS_ERROR(logger, errmsg.str());
-    // FIXME throw? or return 0?
-    // throw std::runtime_error(errmsg.str());
-    return nwords;
-  }
+  std::vector<uint32_t> blob;
+  std::vector<uint32_t> tmpblob;
 
   std::stringstream regName;
   regName << "GEM_AMC.CONFIG_BLASTER.RAM";
 
-  LOG4CPLUS_DEBUG(logger, stdsprintf("readConfRAM with type: 0x%x, size: 0x%x", type, blob_sz));
+  LOG4CPLUS_DEBUG(logger, "readConfRAM with type: 0x" << std::hex << type << std:: dec << ", size: " << blob_sz);
   switch (type) {
   case (BLASTERType::GBT):
-    // return readGBTConfRAMLocal(la, blob, getRAMMaxSize(la, BLASTERType::GBT)); // FIXME function does not exist
+    blob.resize(getRAMMaxSize{}(BLASTERType::GBT));
     regName << ".GBT";
+    // return readGBTConfRAM{}(BLASTERType::GBT, getRAMMaxSize{}(BLASTERType::GBT)); // FIXME function does not exist
     break;
   case (BLASTERType::OptoHybrid):
-    // return readOptoHybridConfRAMLocal(la, blob, getRAMMaxSize(la, BLASTERType::OptoHybrid)); // FIXME function does not exist
+    blob.resize(getRAMMaxSize{}(BLASTERType::OptoHybrid));
     regName << ".OH_FPGA";
+    // return readOptoHybridConfRAM{}(blob, getRAMMaxSize{}(BLASTERType::OptoHybrid)); // FIXME function does not exist
     break;
   case (BLASTERType::VFAT):
-    // return readVFATConfRAMLocal(la, blob, getRAMMaxSize(la, BLASTERType::VFAT)); // FIXME function does not exist
+    blob.resize(getRAMMaxSize{}(BLASTERType::VFAT));
     regName << ".VFAT";
+    // return readVFATConfRAM{}(blob, getRAMMaxSize{}(BLASTERType::VFAT)); // FIXME function does not exist
     break;
   case (BLASTERType::ALL):
-    nwords  = readConfRAMLocal(la, BLASTERType::GBT, blob+nwords, getRAMMaxSize(la, BLASTERType::GBT));
-    // offset += getRAMMaxSize(la, BLASTERType::GBT);
-    nwords += readConfRAMLocal(la, BLASTERType::OptoHybrid, blob+nwords, getRAMMaxSize(la,BLASTERType::OptoHybrid));
-    // offset += getRAMMaxSize(la,BLASTERType::OptoHybrid);
-    nwords += readConfRAMLocal(la, BLASTERType::VFAT, blob+nwords, getRAMMaxSize(la,BLASTERType::VFAT));
-    return nwords;
+    // nwords  = readConfRAM{}(BLASTERType::GBT, blob.data()+nwords, getRAMMaxSize{}(BLASTERType::GBT));
+    tmpblob = readConfRAM{}(BLASTERType::GBT, getRAMMaxSize{}(BLASTERType::GBT));
+    // offset += getRAMMaxSize{}(BLASTERType::GBT);
+    // nwords += readConfRAM{}(BLASTERType::OptoHybrid, blob.data()+nwords, getRAMMaxSize{}(BLASTERType::OptoHybrid));
+    blob.insert(blob.end(), tmpblob.begin(), tmpblob.end());
+    tmpblob.clear();
+    tmpblob = readConfRAM{}(BLASTERType::OptoHybrid, getRAMMaxSize{}(BLASTERType::OptoHybrid));
+    // offset += getRAMMaxSize{}(BLASTERType::OptoHybrid);
+    // nwords += readConfRAM{}(BLASTERType::VFAT, blob.data()+nwords, getRAMMaxSize{}(BLASTERType::VFAT));
+    blob.insert(blob.end(), tmpblob.begin(), tmpblob.end());
+    tmpblob.clear();
+    tmpblob = readConfRAM{}(BLASTERType::VFAT, getRAMMaxSize{}(BLASTERType::VFAT));
+    blob.insert(blob.end(), tmpblob.begin(), tmpblob.end());
+    return blob;
   default:
-    // FIXME error? or assume ALL?
-    // nwords  = readConfRAMLocal(la,BLASTERType::ALL, blob, blob_sz);
     std::stringstream errmsg;
     errmsg << "Invalid BLASTER RAM type "
            << std::hex << std::setw(8) << std::setfill('0') << type << std::dec
            << " selected for read.";
     LOG4CPLUS_ERROR(logger, errmsg.str());
 
-    // FIXME throw? or return 0?
-    // throw std::range_error(errmsg.str());
-    return nwords;
-  }
-
-  nwords = readBlock(la, regName.str(), blob, blob_sz);
-  LOG4CPLUS_DEBUG(logger, stdsprintf("read: %d words from %s", nwords, regName.str().c_str()));
-
-  return nwords;
-}
-
-uint32_t readGBTConfRAMLocal(localArgs *la, void* gbtblob, size_t const& blob_sz, uint16_t const& ohMask)
-{
-  LOG4CPLUS_DEBUG(logger, "readGBTConfRAMLocal called");
-
-  if (blob_sz > getRAMMaxSize(la, BLASTERType::GBT)) {
-    std::stringstream errmsg;
-    errmsg << "Invalid size " << blob_sz << " for GBT BLASTER RAM BLOB";
-    LOG4CPLUS_ERROR(logger, errmsg.str());
     throw std::range_error(errmsg.str());
   }
 
+  nwords = utils::readBlock(regName.str(), blob.data(), blob_sz);
+  LOG4CPLUS_DEBUG(logger, "read: " << nwords << " words from " << regName.str());
+
+  return blob;
+}
+
+std::vector<uint32_t> amc::blaster::readGBTConfRAM::operator()(const uint16_t &ohMask) const
+{
+  LOG4CPLUS_DEBUG(logger, "readGBTConfRAM called");
+
   if (ohMask == 0x0 || ohMask == 0xfff) {
-    // read full blob to VFAT RAM
-    return readBlock(la, "GEM_AMC.CONFIG_BLASTER.RAM.GBT", static_cast<uint32_t*>(gbtblob), blob_sz);
+    // read full GBT RAM blob
+    uint32_t blob_sz = getRAMMaxSize{}(BLASTERType::GBT);
+    std::vector<uint32_t> gbtblob(blob_sz, 0);
+    uint32_t nwords = utils::readBlock("GEM_AMC.CONFIG_BLASTER.RAM.GBT", static_cast<uint32_t*>(gbtblob.data()), blob_sz);
+    return gbtblob;
   } else {
-    // read blob to specific GBT RAM, as specified by ohMask, support non consecutive OptoHybrids?
+    // read blob from specific GBT RAM, as specified by ohMask, support non consecutive OptoHybrids?
+    // emtpy space for missing OHs?
+    uint32_t blob_sz = getRAMMaxSize{}(BLASTERType::GBT);
+    std::vector<uint32_t> gbtblob(blob_sz, 0);
     const uint32_t perblk = gbt::GBT_SINGLE_RAM_SIZE*gbt::GBTS_PER_OH;
     uint32_t nwords = 0x0;
-    uint32_t* blob = static_cast<uint32_t*>(gbtblob);
+    uint32_t* blob = static_cast<uint32_t*>(gbtblob.data());
     for (size_t oh = 0; oh < amc::OH_PER_AMC; ++oh) {
       if ((0x1<<oh)&ohMask) {
         std::stringstream reg;
         reg << "GEM_AMC.CONFIG_BLASTER.RAM.GBT_OH" << oh;
-        nwords += readBlock(la, reg.str(), blob, perblk);
+        nwords += utils::readBlock(reg.str(), blob, perblk);
         blob += perblk;
       }
     }
-    return nwords;
+    return gbtblob;
   }
 }
 
-uint32_t readOptoHybridConfRAMLocal(localArgs *la, uint32_t* ohblob, size_t const& blob_sz, uint16_t const& ohMask)
+std::vector<uint32_t> amc::blaster::readOptoHybridConfRAM::operator()(const uint16_t &ohMask) const
 {
-  LOG4CPLUS_DEBUG(logger, "readOptoHybridConfRAMLocal called");
-
-  if (blob_sz > getRAMMaxSize(la, BLASTERType::OptoHybrid)) {
-    std::stringstream errmsg;
-    errmsg << "Invalid size " << blob_sz << " for OptoHybrid BLASTER RAM BLOB";
-    LOG4CPLUS_ERROR(logger, errmsg.str());
-    throw std::range_error(errmsg.str());
-  }
+  LOG4CPLUS_DEBUG(logger, "readOptoHybridConfRAM called");
 
   if (ohMask == 0x0 || ohMask == 0xfff) {
-    // read to all OptoHybrids
-    return readBlock(la, "GEM_AMC.CONFIG_BLASTER.RAM.OH", ohblob, blob_sz);
+    // read from all OptoHybrids
+    uint32_t blob_sz = getRAMMaxSize{}(BLASTERType::OptoHybrid);
+    std::vector<uint32_t> ohblob(blob_sz, 0);
+    uint32_t nwords = utils::readBlock("GEM_AMC.CONFIG_BLASTER.RAM.OH", ohblob.data(), blob_sz);
+    return ohblob;
   } else {
-    // read blob to specific OptoHybrid RAM, as specified by ohMask
+    // read blob from specific OptoHybrid RAM, as specified by ohMask, support non consecutive OptoHybrids?
+    // emtpy space for missing OHs?
+    uint32_t blob_sz = getRAMMaxSize{}(BLASTERType::OptoHybrid);
+    std::vector<uint32_t> ohblob(blob_sz, 0);
     uint32_t nwords = 0x0;
-    uint32_t* blob = ohblob;
+    uint32_t* blob = ohblob.data();
     const uint32_t perblk = oh::OH_SINGLE_RAM_SIZE;
     for (size_t oh = 0; oh < amc::OH_PER_AMC; ++oh) {
       if ((0x1<<oh)&ohMask) {
         std::stringstream reg;
         reg << "GEM_AMC.CONFIG_BLASTER.RAM.OH_FPGA_OH" << oh;
-        nwords += readBlock(la, reg.str(), blob, perblk);
+        nwords += utils::readBlock(reg.str(), blob, perblk);
         blob += perblk;
       }
     }
-    return nwords;
+    return ohblob;
   }
 }
 
-uint32_t readVFATConfRAMLocal(localArgs *la, uint32_t* vfatblob, size_t const& blob_sz, uint16_t const& ohMask)
+std::vector<uint32_t> amc::blaster::readVFATConfRAM::operator()(const uint16_t &ohMask) const
 {
-  LOG4CPLUS_DEBUG(logger, "readVFATConfRAMLocal called");
-
-  if (blob_sz > getRAMMaxSize(la, BLASTERType::VFAT)) {
-    std::stringstream errmsg;
-    errmsg << "Invalid size " << blob_sz << " for VFAT BLASTER RAM BLOB";
-    LOG4CPLUS_ERROR(logger, errmsg.str());
-    throw std::range_error(errmsg.str());
-  }
+  LOG4CPLUS_DEBUG(logger, "readVFATConfRAM called");
 
   if (ohMask == 0x0 || ohMask == 0xfff) {
-    // read full blob to VFAT RAM
-    return readBlock(la, "GEM_AMC.CONFIG_BLASTER.RAM.VFAT", vfatblob, blob_sz);
+    // read VFAT blob from all OptoHybrids
+    uint32_t blob_sz = getRAMMaxSize{}(BLASTERType::VFAT);
+    std::vector<uint32_t> vfatblob(blob_sz, 0);
+    uint32_t nwords = utils::readBlock("GEM_AMC.CONFIG_BLASTER.RAM.VFAT", vfatblob.data(), blob_sz);
+    return vfatblob;
   } else {
-    // read `vfatblob` to OH specific VFAT RAM, as specified by ohMask
+    // read blob from OptoHybrid specific VFAT RAM, as specified by ohMask, support non consecutive OptoHybrids?
+    // emtpy space for missing OHs?
+    uint32_t blob_sz = getRAMMaxSize{}(BLASTERType::VFAT);
+    std::vector<uint32_t> vfatblob(blob_sz, 0);
     uint32_t nwords = 0x0;
-    uint32_t* blob = vfatblob;
+    uint32_t* blob = vfatblob.data();
     const uint32_t perblk = vfat::VFAT_SINGLE_RAM_SIZE*oh::VFATS_PER_OH;
     for (size_t oh = 0; oh < amc::OH_PER_AMC; ++oh) {
       if ((0x1<<oh)&ohMask) {
         std::stringstream reg;
         reg << "GEM_AMC.CONFIG_BLASTER.RAM.VFAT_OH" << oh;
-        nwords += readBlock(la, reg.str(), blob, perblk);
+        nwords += utils::readBlock(reg.str(), blob, perblk);
         blob += perblk;
       }
     }
-    return nwords;
+    return vfatblob;
   }
 }
 
-void writeConfRAMLocal(localArgs *la, BLASTERTypeT const& type, uint32_t* blob, size_t const& blob_sz)
+void amc::blaster::writeConfRAM::operator()(BLASTERTypeT const& type, std::vector<uint32_t> blob) const
 {
-  if (!checkBLOBSize(la, type, blob_sz)) {
+  if (!checkBLOBSize(type, blob.size())) {
     std::stringstream errmsg;
-    errmsg << "Invalid size " << blob_sz << " for BLASTER RAM BLOB";
+    errmsg << "Invalid size " << blob.size() << " for BLASTER RAM BLOB";
     LOG4CPLUS_ERROR(logger, errmsg.str());
-    // FIXME throw? or return 0?
     throw std::runtime_error(errmsg.str());
-    // return nwords;
   }
 
-  // do memory validation on blob
-  if (!blob) {
+  // do memory validation on blob, doesn't make sense now that this is a vector...
+  if (!blob.data()) {
     std::stringstream errmsg;
-    errmsg << "Invalid BLOB " << std::hex << std::setw(8) << std::setfill('0') << blob
+    errmsg << "Invalid BLOB " << std::hex << std::setw(8) << std::setfill('0') << blob.data()
            << std::dec << " provided to write BLASTER RAM";
     LOG4CPLUS_ERROR(logger, errmsg.str());
-    // FIXME throw? or return 0?
     throw std::runtime_error(errmsg.str());
-    // return nwords;
   }
 
-  LOG4CPLUS_WARN(logger, stdsprintf("writeConfRAM with type: 0x%x, size: 0x%x", type, blob_sz));
+  auto iter = blob.begin();
+  std::vector<uint32_t> tmpblob; // = blob;
+
+  LOG4CPLUS_WARN(logger, "writeConfRAM with type: 0x" << std::hex << type << std::dec << ", size: " << blob.size());
   switch (type) {
   case (BLASTERType::GBT):
-    writeGBTConfRAMLocal(la, blob, getRAMMaxSize(la, BLASTERType::GBT));
+    writeGBTConfRAM{}(blob);
     return;
   case (BLASTERType::OptoHybrid):
-    writeOptoHybridConfRAMLocal(la, blob, getRAMMaxSize(la, BLASTERType::OptoHybrid));
+    writeOptoHybridConfRAM{}(blob);
     return;
   case (BLASTERType::VFAT):
-    writeVFATConfRAMLocal(la, blob, getRAMMaxSize(la, BLASTERType::VFAT));
+    writeVFATConfRAM{}(blob);
     return;
   case (BLASTERType::ALL):
     LOG4CPLUS_WARN(logger, "Reading the full RAM");
-    writeConfRAMLocal(la, BLASTERType::GBT, blob,
-                      getRAMMaxSize(la, BLASTERType::GBT));
-    writeConfRAMLocal(la, BLASTERType::OptoHybrid, blob + getRAMMaxSize(la, BLASTERType::GBT),
-                      getRAMMaxSize(la,BLASTERType::OptoHybrid));
-    writeConfRAMLocal(la, BLASTERType::VFAT, blob + getRAMMaxSize(la, BLASTERType::GBT) + getRAMMaxSize(la,BLASTERType::OptoHybrid),
-                      getRAMMaxSize(la,BLASTERType::VFAT));
+    tmpblob.clear();
+    tmpblob.resize(getRAMMaxSize{}(BLASTERType::GBT));
+    tmpblob.insert(tmpblob.begin(), iter, iter+getRAMMaxSize{}(BLASTERType::GBT));
+    writeConfRAM{}(BLASTERType::GBT, tmpblob);
+
+    iter += getRAMMaxSize{}(BLASTERType::GBT);
+    tmpblob.clear();
+    tmpblob.resize(getRAMMaxSize{}(BLASTERType::OptoHybrid));
+    tmpblob.insert(tmpblob.begin(), iter, iter+getRAMMaxSize{}(BLASTERType::OptoHybrid));
+    writeConfRAM{}(BLASTERType::OptoHybrid, tmpblob);
+
+    iter += getRAMMaxSize{}(BLASTERType::OptoHybrid);
+    tmpblob.clear();
+    tmpblob.resize(getRAMMaxSize{}(BLASTERType::VFAT));
+    tmpblob.insert(tmpblob.begin(), iter, iter+getRAMMaxSize{}(BLASTERType::VFAT));
+    writeConfRAM{}(BLASTERType::VFAT, tmpblob);
     return;
   default:
-    // FIXME error? or assume ALL
-    // writeConfRAMLocal(la,BLASTERType::ALL, blob, blob_sz);
+    // writeConfRAM{}(BLASTERType::ALL, blob, blob.size());
     std::stringstream errmsg;
     errmsg << "Invalid BLASTER RAM type "
            << std::hex << std::setw(8) << std::setfill('0') << type << std::dec
            << " selected for write.";
     LOG4CPLUS_ERROR(logger, errmsg.str());
-    // FIXME throw? or return 0?
     throw std::runtime_error(errmsg.str());
-    // return nwords;
   }
 }
 
-void writeGBTConfRAMLocal(localArgs *la, uint32_t* gbtblob, size_t const& blob_sz, uint16_t const& ohMask)
+void amc::blaster::writeGBTConfRAM::operator()(const std::vector<uint32_t> &gbtblob, const uint16_t &ohMask) const
 {
-  LOG4CPLUS_DEBUG(logger, "writeGBTConfRAMLocal called");
+  LOG4CPLUS_DEBUG(logger, "writeGBTConfRAM called");
 
-  if (blob_sz > getRAMMaxSize(la, BLASTERType::GBT)) {
+  if (gbtblob.size() > getRAMMaxSize{}(BLASTERType::GBT)) {
     std::stringstream errmsg;
-    errmsg << "Invalid size " << blob_sz << " for GBT BLASTER RAM BLOB";
+    errmsg << "Invalid size " << gbtblob.size() << " for GBT BLASTER RAM BLOB";
     LOG4CPLUS_ERROR(logger, errmsg.str());
     throw std::range_error(errmsg.str());
   }
 
   if (ohMask == 0x0 || ohMask == 0xfff) {
-    // write full blob to VFAT RAM
-    writeBlock(la, "GEM_AMC.CONFIG_BLASTER.RAM.GBT", gbtblob, blob_sz);
+    utils::writeBlock("GEM_AMC.CONFIG_BLASTER.RAM.GBT", gbtblob.data(), gbtblob.size());
   } else {
-    // write blob to specific GBT RAM, as specified by ohMask, support non consecutive OptoHybrids?
     const uint32_t perblk = gbt::GBT_SINGLE_RAM_SIZE*gbt::GBTS_PER_OH;
-    uint32_t* blob = gbtblob;
+    const uint32_t* blob = gbtblob.data();
     for (size_t oh = 0; oh < amc::OH_PER_AMC; ++oh) {
       if ((0x1<<oh)&ohMask) {
         std::stringstream reg;
         reg << "GEM_AMC.CONFIG_BLASTER.RAM.GBT_OH" << oh;
-        writeBlock(la, reg.str(), blob, perblk);
+        utils::writeBlock(reg.str(), blob, perblk);
         blob += perblk;
       }
     }
@@ -338,29 +351,27 @@ void writeGBTConfRAMLocal(localArgs *la, uint32_t* gbtblob, size_t const& blob_s
   return;
 }
 
-void writeOptoHybridConfRAMLocal(localArgs *la, uint32_t* ohblob, size_t const& blob_sz, uint16_t const& ohMask)
+void amc::blaster::writeOptoHybridConfRAM::operator()(const std::vector<uint32_t> &ohblob, const uint16_t &ohMask) const
 {
-  LOG4CPLUS_DEBUG(logger, "writeOptoHybridConfRAMLocal called");
+  LOG4CPLUS_DEBUG(logger, "writeOptoHybridConfRAM called");
 
-  if (blob_sz > getRAMMaxSize(la, BLASTERType::OptoHybrid)) {
+  if (ohblob.size() > getRAMMaxSize{}(BLASTERType::OptoHybrid)) {
     std::stringstream errmsg;
-    errmsg << "Invalid size " << blob_sz << " for OptoHybrid BLASTER RAM BLOB";
+    errmsg << "Invalid size " << ohblob.size() << " for OptoHybrid BLASTER RAM BLOB";
     LOG4CPLUS_ERROR(logger, errmsg.str());
     throw std::range_error(errmsg.str());
   }
 
   if (ohMask == 0x0 || ohMask == 0xfff) {
-    // write to all OptoHybrids
-    writeBlock(la, "GEM_AMC.CONFIG_BLASTER.RAM.OH", ohblob, blob_sz);
+    utils::writeBlock("GEM_AMC.CONFIG_BLASTER.RAM.OH", ohblob.data(), ohblob.size());
   } else {
-    // write blob to specific OptoHybrid RAM, as specified by ohMask
-    uint32_t* blob = ohblob;
+    const uint32_t* blob = ohblob.data();
     const uint32_t perblk = oh::OH_SINGLE_RAM_SIZE;
     for (size_t oh = 0; oh < amc::OH_PER_AMC; ++oh) {
       if ((0x1<<oh)&ohMask) {
         std::stringstream reg;
         reg << "GEM_AMC.CONFIG_BLASTER.RAM.OH_FPGA_OH" << oh;
-        writeBlock(la, reg.str(), blob, perblk);
+        utils::writeBlock(reg.str(), blob, perblk);
         blob += perblk;
       }
     }
@@ -369,131 +380,30 @@ void writeOptoHybridConfRAMLocal(localArgs *la, uint32_t* ohblob, size_t const& 
   return;
 }
 
-void writeVFATConfRAMLocal(localArgs *la, uint32_t* vfatblob, size_t const& blob_sz, uint16_t const& ohMask)
+void amc::blaster::writeVFATConfRAM::operator()(const std::vector<uint32_t> &vfatblob, const uint16_t &ohMask) const
 {
-  LOG4CPLUS_DEBUG(logger, "writeVFATConfRAMLocal called");
+  LOG4CPLUS_DEBUG(logger, "writeVFATConfRAM called");
 
-  if (blob_sz > getRAMMaxSize(la, BLASTERType::VFAT)) {
+  if (vfatblob.size() > getRAMMaxSize{}(BLASTERType::VFAT)) {
     std::stringstream errmsg;
-    errmsg << "Invalid size " << blob_sz << " for VFAT BLASTER RAM BLOB";
+    errmsg << "Invalid size " << vfatblob.size() << " for VFAT BLASTER RAM BLOB";
     LOG4CPLUS_ERROR(logger, errmsg.str());
     throw std::range_error(errmsg.str());
   }
 
   if (ohMask == 0x0 || ohMask == 0xfff) {
-    // write full blob to VFAT RAM
-    writeBlock(la, "GEM_AMC.CONFIG_BLASTER.RAM.VFAT", vfatblob, blob_sz);
+    utils::writeBlock("GEM_AMC.CONFIG_BLASTER.RAM.VFAT", vfatblob.data(), vfatblob.size());
   } else {
-    // write `vfatblob` to OH specific VFAT RAM, as specified by ohMask
-    uint32_t* blob = vfatblob;
+    const uint32_t *blob = vfatblob.data();
     const uint32_t perblk = vfat::VFAT_SINGLE_RAM_SIZE*oh::VFATS_PER_OH;
     for (size_t oh = 0; oh < amc::OH_PER_AMC; ++oh) {
       if ((0x1<<oh)&ohMask) {
         std::stringstream reg;
         reg << "GEM_AMC.CONFIG_BLASTER.RAM.VFAT_OH" << oh;
-        writeBlock(la, reg.str(), blob, perblk);
+        utils::writeBlock(reg.str(), blob, perblk);
         blob += perblk;
       }
     }
-  }
-
-  return;
-}
-
-
-////////////////// RPC callback methods //////////////////
-void readConfRAM(const RPCMsg *request, RPCMsg *response)
-{
-  // struct localArgs la = getLocalArgs(response);
-  GETLOCALARGS(response);
-
-  BLASTERTypeT type = static_cast<BLASTERTypeT>(request->get_word("type"));
-  LOG4CPLUS_DEBUG(logger, stdsprintf("BLASTERTypeT is 0x%x", type));
-
-  uint32_t blob_sz = getRAMMaxSize(&la, type);
-  LOG4CPLUS_DEBUG(logger, stdsprintf("blob_sz is 0x%x", blob_sz));
-  std::vector<uint32_t> confblob;
-  confblob.reserve(blob_sz);
-  try {
-    uint32_t nwords = readConfRAMLocal(&la, type, confblob.data(), blob_sz);
-    response->set_binarydata("confblob", confblob.data(), nwords);
-  } catch (std::runtime_error& e) {
-    std::stringstream errmsg;
-    errmsg << "Error reading configuration RAM: " << e.what();
-    LOG4CPLUS_ERROR(logger, errmsg.str());
-    response->set_string("error",errmsg.str());
-  }
-}
-
-void writeConfRAM(const RPCMsg *request, RPCMsg *response)
-{
-  // struct localArgs la = getLocalArgs(response);
-  GETLOCALARGS(response);
-
-  BLASTERTypeT type = static_cast<BLASTERTypeT>(request->get_word("type"));
-  LOG4CPLUS_DEBUG(logger, stdsprintf("BLASTERTypeT is 0x%x", type));
-
-  uint32_t blob_sz = request->get_binarydata_size("confblob");
-  uint32_t confblob[blob_sz];
-  LOG4CPLUS_DEBUG(logger, stdsprintf("blob_sz is 0x%x", blob_sz));
-  request->get_binarydata("confblob", confblob, blob_sz);
-  try {
-    writeConfRAMLocal(&la, type, confblob, blob_sz);
-  } catch (std::runtime_error& e) {
-    std::stringstream errmsg;
-    errmsg << "Error writing configuration RAM: " << e.what();
-    response->set_string("error",errmsg.str());
-  }
-}
-
-void writeGBTConfRAM(const RPCMsg *request, RPCMsg *response)
-{
-  // struct localArgs la = getLocalArgs(response);
-  GETLOCALARGS(response);
-
-  uint32_t* gbtblob = nullptr;
-  uint32_t blob_sz = request->get_binarydata_size("gbtblob");
-  request->get_binarydata("gbtblob", gbtblob, blob_sz);
-  try {
-    writeGBTConfRAMLocal(&la, gbtblob, blob_sz);
-  } catch (std::runtime_error& e) {
-    std::stringstream errmsg;
-    errmsg << "Error writing GBT configuration RAM: " << e.what();
-    response->set_string("error",errmsg.str());
-  }
-}
-
-void writeOptoHybridConfRAM(const RPCMsg *request, RPCMsg *response)
-{
-  // struct localArgs la = getLocalArgs(response);
-  GETLOCALARGS(response);
-
-  uint32_t* ohblob = nullptr;
-  uint32_t blob_sz = request->get_binarydata_size("ohblob");
-  request->get_binarydata("ohblob", ohblob, blob_sz);
-  try {
-    writeOptoHybridConfRAMLocal(&la, ohblob, blob_sz);
-  } catch (std::runtime_error& e) {
-    std::stringstream errmsg;
-    errmsg << "Error writing OptoHybrid configuration RAM: " << e.what();
-    response->set_string("error",errmsg.str());
-  }
-}
-
-void writeVFATConfRAM(const RPCMsg *request, RPCMsg *response)
-{
-  // struct localArgs la = getLocalArgs(response);
-  GETLOCALARGS(response);
-
-  uint32_t* vfatblob = nullptr;
-  uint32_t blob_sz = request->get_binarydata_size("vfatblob");
-  request->get_binarydata("vfatblob", vfatblob, blob_sz);
-  try {
-    writeVFATConfRAMLocal(&la, vfatblob, blob_sz);
-  } catch (std::runtime_error& e) {
-    std::stringstream errmsg;
-    errmsg << "Error writing VFAT configuration RAM: " << e.what();
-    response->set_string("error",errmsg.str());
   }
 
   return;

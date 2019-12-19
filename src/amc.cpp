@@ -238,8 +238,8 @@ extern "C" {
         // xhal::common::rpc::registerMethod<amc::sca::readSCAADCSignalStrengthSensors>(modmgr);
         // xhal::common::rpc::registerMethod<amc::sca::readAllSCAADCSensors>(modmgr);
 
-        // // BLASTER RAM module methods (from amc/blaster_ram)
-        // xhal::common::rpc::registerMethod<amc::blaster::writeConfRAM>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::blaster::readConfRAM>(modmgr);
+        // BLASTER RAM module methods (from amc/blaster_ram)
+        xhal::common::rpc::registerMethod<amc::blaster::writeConfRAM>(modmgr);
+        xhal::common::rpc::registerMethod<amc::blaster::readConfRAM>(modmgr);
     }
 }
