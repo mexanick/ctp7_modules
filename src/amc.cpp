@@ -196,18 +196,17 @@ extern "C" {
         xhal::common::rpc::registerMethod<amc::sbitReadOut>(modmgr);
         xhal::common::rpc::registerMethod<amc::repeatedRegRead>(modmgr);
 
-        // // DAQ module methods (from amc/daq)
-        // xhal::common::rpc::registerMethod<amc::daq::enableDAQLink>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::daq::disableDAQLink>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::daq::setZS>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::daq::resetDAQLink>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::daq::setDAQLinkInputTimeout>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::daq::setDAQLinkRunType>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::daq::setDAQLinkRunParameter>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::daq::setDAQLinkRunParameters>(modmgr);
-
-        // xhal::common::rpc::registerMethod<amc::daq::configureDAQModule>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::daq::enableDAQModule>(modmgr);
+        // DAQ module methods (from amc/daq)
+        xhal::common::rpc::registerMethod<amc::daq::enableDAQLink>(modmgr);
+        xhal::common::rpc::registerMethod<amc::daq::disableDAQLink>(modmgr);
+        xhal::common::rpc::registerMethod<amc::daq::setZS>(modmgr);
+        xhal::common::rpc::registerMethod<amc::daq::resetDAQLink>(modmgr);
+        xhal::common::rpc::registerMethod<amc::daq::setDAQLinkInputTimeout>(modmgr);
+        xhal::common::rpc::registerMethod<amc::daq::setDAQLinkRunType>(modmgr);
+        xhal::common::rpc::registerMethod<amc::daq::setDAQLinkRunParameter>(modmgr);
+        xhal::common::rpc::registerMethod<amc::daq::setDAQLinkRunParameters>(modmgr);
+        xhal::common::rpc::registerMethod<amc::daq::configureDAQModule>(modmgr);
+        xhal::common::rpc::registerMethod<amc::daq::enableDAQModule>(modmgr);
 
         // // TTC module methods (from amc/ttc)
         // xhal::common::rpc::registerMethod<amc::ttc::ttcModuleReset>(modmgr);
