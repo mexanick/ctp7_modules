@@ -208,26 +208,26 @@ extern "C" {
         xhal::common::rpc::registerMethod<amc::daq::configureDAQModule>(modmgr);
         xhal::common::rpc::registerMethod<amc::daq::enableDAQModule>(modmgr);
 
-        // // TTC module methods (from amc/ttc)
-        // xhal::common::rpc::registerMethod<amc::ttc::ttcModuleReset>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::ttc::ttcMMCMReset>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::ttc::ttcMMCMPhaseShift>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::ttc::checkPLLLock>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::ttc::getMMCMPhaseMean>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::ttc::getMMCMPhaseMedian>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::ttc::getGTHPhaseMean>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::ttc::getGTHPhaseMedian>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::ttc::ttcCounterReset>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::ttc::getL1AEnable>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::ttc::setL1AEnable>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::ttc::getTTCConfig>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::ttc::setTTCConfig>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::ttc::getTTCStatus>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::ttc::getTTCErrorCount>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::ttc::getTTCCounter>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::ttc::getL1AID>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::ttc::getL1ARate>(modmgr);
-        // xhal::common::rpc::registerMethod<amc::ttc::getTTCSpyBuffer>(modmgr);
+        // TTC module methods (from amc/ttc)
+        xhal::common::rpc::registerMethod<amc::ttc::ttcModuleReset>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::ttcMMCMReset>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::ttcMMCMPhaseShift>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::checkPLLLock>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::getMMCMPhaseMean>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::getMMCMPhaseMedian>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::getGTHPhaseMean>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::getGTHPhaseMedian>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::ttcCounterReset>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::getL1AEnable>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::setL1AEnable>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::getTTCConfig>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::setTTCConfig>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::getTTCStatus>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::getTTCErrorCount>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::getTTCCounter>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::getL1AID>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::getL1ARate>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::getTTCSpyBuffer>(modmgr);
 
         // // SCA module methods (from amc/sca)
         // xhal::common::rpc::registerMethod<amc::sca::scaHardResetEnable>(modmgr);
