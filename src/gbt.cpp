@@ -17,20 +17,18 @@
 
 std::vector<std::vector<uint32_t>> scanGBTPhases::operator()(const uint32_t &ohN, const uint32_t &nResets, const uint8_t &phaseMin, const uint8_t &phaseMax, const uint8_t &phaseStep, const uint32_t &nVerificationReads) const
 {
-    LOG4CPLUS_INFO(logger, stdsprintf("Scanning the phases for OH #%u.", ohN));
+    LOG4CPLUS_INFO(logger, "Scanning the phases for OH #" << ohN << ".");
 
     // ohN check
     const uint32_t ohMax = readReg("GEM_AMC.GEM_SYSTEM.CONFIG.NUM_OF_OH");
     if (ohN >= ohMax)
-        EMIT_RPC_ERROR(stdsprintf("The ohN parameter supplied (%u) exceeds the number of OH's supported by the CTP7 (%u).", ohN, ohMax), true);
+        std::stringstream errmsg;
+        errmsg << "The ohN parameter supplied (" << ohN << ") exceeds the number of OH's supported by the CTP7 (" << ohMax << ").";
+        throw std::range_error(errmsg.str());
 
-    // phaseMin check
-    if (checkPhase(phaseMin))
-        return true;
-
-    // phaseMax check
-    if (checkPhase(phaseMax))
-        return true;
+    // phaseMin and phaseMax check
+    checkPhase(phaseMin);
+    checkPhase(phaseMax);
 
     // Results array
     std::vector<std::vector<uint32_t>> results(oh::VFATS_PER_OH, std::vector<uint32_t>(16));
@@ -39,13 +37,13 @@ std::vector<std::vector<uint32_t>> scanGBTPhases::operator()(const uint32_t &ohN
     for (uint8_t phase = phaseMin; phase <= phaseMax; phase += phaseStep) {
         // Set the new phases
         for (uint32_t vfatN = 0; vfatN < oh::VFATS_PER_OH; vfatN++) {
-            if (writeGBTPhase{}(ohN, vfatN, phase))
-                return true;
+            writeGBTPhase{}(ohN, vfatN, phase);
         }
 
         // Wait for the phases to be set
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
+        std::stringstream syncErrCnt_regName, cfgRun_regName, hwIdVer_regName, hwId_regName;
         for (uint32_t repN = 0; repN < nResets; repN++) {
             // Try to synchronize the VFAT's
             writeReg(la, "GEM_AMC.GEM_SYSTEM.CTRL.LINK_RESET", 1);
@@ -54,25 +52,27 @@ std::vector<std::vector<uint32_t>> scanGBTPhases::operator()(const uint32_t &ohN
             // Check the VFAT status
             slowCtrlErrCntVFAT vfatErrs;
             for (uint32_t vfatN = 0; vfatN < oh::VFATS_PER_OH; vfatN++) {
-                if (readReg(stdsprintf("GEM_AMC.OH_LINKS.OH%hu.VFAT%hu.SYNC_ERR_CNT", ohN, vfatN)) != 0) {
-                    continue;
-                }
-                vfatErrs = repeatedRegRead(stdsprintf("GEM_AMC.OH.OH%hu.GEB.VFAT%hu.CFG_RUN", ohN, vfatN), true, nVerificationReads);
+                syncErrCnt_regName << "GEM_AMC.OH_LINKS.OH" << ohN << ".VFAT" << vfatN << ".SYNC_ERR_CNT";
+                cfgRun_regName << "GEM_AMC.OH.OH" << ohN << ".GEB.VFAT" << vfatN << ".CFG_RUN";
+                hwIdVer_regName << "GEM_AMC.OH.OH" << ohN << ".GEB.VFAT" << vfatN << ".HW_ID_VER";
+                hwId_regName << "GEM_AMC.OH.OH" << ohN << ".GEB.VFAT" << vfatN << ".HW_ID";
+                vfatErrs = repeatedRegRead(syncErrCnt_regName, true, nVerificationReads);
                 if (vfatErrs.sum != 0) {
                     continue;
                 }
-
-                // check HW_ID_VER
-                vfatErrs = repeatedRegRead(stdsprintf("GEM_AMC.OH.OH%hu.GEB.VFAT%hu.HW_ID_VER", ohN, vfatN), true, nVerificationReads);
+                vfatErrs = repeatedRegRead(cfgRun_regName, true, nVerificationReads);
                 if (vfatErrs.sum != 0) {
                     continue;
                 }
-
-                // check HW_ID
-                vfatErrs = repeatedRegRead(stdsprintf("GEM_AMC.OH.OH%hu.GEB.VFAT%hu.HW_ID", ohN, vfatN), true, nVerificationReads);
+                vfatErrs = repeatedRegRead(hwIdVer_regName, true, nVerificationReads);
                 if (vfatErrs.sum != 0) {
                     continue;
                 }
+                vfatErrs = repeatedRegRead(hwId_regName, true, nVerificationReads);
+                if (vfatErrs.sum != 0) {
+                    continue;
+                }
+                // If no errors, the phase is good
                 results[vfatN][phase]++;
             }
         }
@@ -80,48 +80,53 @@ std::vector<std::vector<uint32_t>> scanGBTPhases::operator()(const uint32_t &ohN
 
     return results;
 
-} //End scanGBTPhase
+}
 
-bool writeGBTConfig::operator()(const uint32_t &ohN, const uint32_t &gbtN) const
+void writeGBTConfig::operator()(const uint32_t &ohN, const uint32_t &gbtN, const config_t &config) const
 {
 
-    LOG4CPLUS_INFO(logger, stdsprintf("Writing the configuration of OH #%u - GBTX #%u.", ohN, gbtN));
+    std::stringstream logOH_GBT_config;
+    logOH_GBT_config << "Writing the configuration of OH #" << ohN << " - GBTX #" << gbtN << ".";
+    LOG4CPLUS_INFO(logger, logOH_GBT_config);
 
-    config_t config{};
     // ohN check
     const uint32_t ohMax = readReg("GEM_AMC.GEM_SYSTEM.CONFIG.NUM_OF_OH");
+    std::stringstream errmsg;
     if (ohN >= ohMax)
-        EMIT_RPC_ERROR(stdsprintf("The ohN parameter supplied (%u) exceeds the number of OH's supported by the CTP7 (%u).", ohN, ohMax), true);
+        errmsg << "The ohN parameter supplied (" << ohN << ") exceeds the number of OH's supported by the CTP7 (" << ohMax << ").";
+        throw std::range_error(errmsg.str());
 
     // gbtN check
     if (gbtN >= GBTS_PER_OH)
-        EMIT_RPC_ERROR(stdsprintf("The gbtN parameter supplied (%u) exceeds the number of GBT's per OH (%u).", gbtN, GBTS_PER_OH), true);
+        errmsg << "The gbtN parameter supplied (" << ohN << ") exceeds the number of GBT's per OH (" << GBTS_PER_OH << ").";
+        throw std::range_error(errmsg.str());
 
     // Write all the registers
     for (size_t address = 0; address < CONFIG_SIZE; address++) {
-        if (writeGBTRegLocal(ohN, gbtN, static_cast<uint16_t>(address), config[address]))
-            return true;
+        writeGBTReg(ohN, gbtN, static_cast<uint16_t>(address), config[address]);
     }
 
-    return false;
+}
 
-} //End writeGBTConfig
-
-bool WriteGBTPhase::operator()(const uint32_t &ohN, const uint32_t &vfatN, const uint8_t &phase) const
+void writeGBTPhase::operator()(const uint32_t &ohN, const uint32_t &vfatN, const uint8_t &phase) const
 {
-    LOG4CPLUS_INFO(logger, stdsprintf("Writing phase %u to VFAT #%u of OH #%u.", phase, vfatN, ohN));
+    std::stringstream logOH_vfatphase;
+    logOH_vfatphase << "Writing phase " << phase << " to VFAT #" << vfatN << " of OH #" << ohN << ".";
+    LOG4CPLUS_INFO(logger, logOH_vfatphase);
     // ohN check
     const uint32_t ohMax = readReg("GEM_AMC.GEM_SYSTEM.CONFIG.NUM_OF_OH");
+    std::stringstream errmsg;
     if (ohN >= ohMax)
-        EMIT_RPC_ERROR(stdsprintf("The ohN parameter supplied (%u) exceeds the number of OH's supported by the CTP7 (%u).", ohN, ohMax), true);
+        errmsg << "The ohN parameter supplied (" << ohN << ") exceeds the number of OH's supported by the CTP7 (" << ohMax << ").";
+        throw std::range_error(errmsg.str());
 
     // vfatN check
     if (vfatN >= oh::VFATS_PER_OH)
-        EMIT_RPC_ERROR(stdsprintf("The vfatN parameter supplied (%u) exceeds the number of VFAT's per OH (%u).", vfatN, oh::VFATS_PER_OH), true);
+        errmsg << "The vfatN parameter supplied (" << vfatN << ") exceeds the number of VFAT's per OH (" << oh::VFATS_PER_OH << ").";
+        throw std::range_error(errmsg.str());
 
     // phase check
-    if (checkPhase(phase))
-        return true;
+    checkPhase(phase);
 
     // Write the triplicated phase registers
     const uint32_t gbtN = gbt::elinkMappings::VFAT_TO_GBT[vfatN];
@@ -130,23 +135,23 @@ bool WriteGBTPhase::operator()(const uint32_t &ohN, const uint32_t &vfatN, const
     for (unsigned char regN = 0; regN < 3; regN++) {
         const uint16_t regAddress = elinkMappings::ELINK_TO_REGISTERS[elinkMappings::VFAT_TO_ELINK[vfatN]][regN];
 
-        if (writeGBTRegLocal(ohN, gbtN, regAddress, phase))
-            return true;
+        writeGBTReg(ohN, gbtN, regAddress, phase);
     }
 
-    return false;
+}
 
-} //End writeGBTPhaseLocal
-
-bool writeGBTRegLocal(const uint32_t ohN, const uint32_t gbtN, const uint16_t address, const uint8_t value)
+void writeGBTReg(const uint32_t ohN, const uint32_t gbtN, const uint16_t address, const uint8_t value)
 {
     // Check that the GBT exists
+    std::stringstream errmsg;
     if (gbtN >= GBTS_PER_OH)
-        EMIT_RPC_ERROR(stdsprintf("The gbtN parameter supplied (%u) is larger than the number of GBT's per OH (%u).", gbtN, GBTS_PER_OH), true);
+        errmsg << "The gbtN parameter supplied (" << gbtN << ") is larger than the number of GBT's per OH (" << GBTS_PER_OH << ").";
+        throw std::range_error(errmsg.str());
 
     // Check that the address is writable
     if (address >= CONFIG_SIZE)
-        EMIT_RPC_ERROR(stdsprintf("GBT has %hu writable addresses while the provided address is %hu.", CONFIG_SIZE-1, address), true);
+        errmsg << "GBT has " << CONFIG_SIZE-1 << "writable addresses while the provided address is" << address << ".";
+        throw std::range_error(errmsg.str());
 
     // GBT registers are 8 bits long
     writeReg("GEM_AMC.SLOW_CONTROL.IC.READ_WRITE_LENGTH", 1);
@@ -160,9 +165,7 @@ bool writeGBTRegLocal(const uint32_t ohN, const uint32_t gbtN, const uint16_t ad
     writeReg("GEM_AMC.SLOW_CONTROL.IC.WRITE_DATA", value);
     writeReg("GEM_AMC.SLOW_CONTROL.IC.EXECUTE_WRITE", 1);
 
-    return false;
-} //End writeGBTRegLocal(...)
-
+}
 extern "C" {
     const char *module_version_key = "gbt v1.0.1";
     int module_activity_color = 4;
