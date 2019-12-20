@@ -7,7 +7,7 @@
 #ifndef AMC_TTC_H
 #define AMC_TTC_H
 
-#include "utils.h"
+#include "ctp7_modules/common/utils.h"
 
 namespace amc {
   namespace ttc {

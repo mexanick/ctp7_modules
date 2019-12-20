@@ -1,10 +1,12 @@
 #ifndef __MODULE_MANAGER_H
 #define __MODULE_MANAGER_H
 
+#include "ctp7_modules/server/wiscRPCMsg.h"
+#include "ctp7_modules/server/LogManager.h"
+
 #include <string>
 #include <map>
-#include "wiscRPCMsg.h"
-#include "LogManager.h"
+
 using namespace wisc;
 
 class ModuleManager {

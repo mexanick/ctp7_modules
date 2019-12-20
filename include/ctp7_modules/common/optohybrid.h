@@ -7,8 +7,8 @@
 #ifndef OPTOHYBRID_H
 #define OPTOHYBRID_H
 
-#include "utils.h"
-#include "vfat_parameters.h"
+#include "ctp7_modules/common/utils.h"
+#include "ctp7_modules/common/vfat_parameters.h"
 
 #include <map>
 #include <string>

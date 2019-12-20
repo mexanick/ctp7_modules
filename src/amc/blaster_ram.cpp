@@ -2,9 +2,8 @@
  *  \author Jared Sturdy <sturdy@cern.ch>
  */
 
-#include "amc/blaster_ram.h"
-
-#include "hw_constants.h"
+#include "ctp7_modules/common/amc/blaster_ram.h"
+#include "ctp7_modules/common/hw_constants.h"
 
 #include <chrono>
 #include <iomanip>

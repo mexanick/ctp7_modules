@@ -4,11 +4,11 @@
  *  \author Brian Dorney <brian.l.dorney@cern.ch>
  */
 
-#include "daq_monitor.h"
+#include "ctp7_modules/common/daq_monitor.h"
 
-#include "amc.h"
-#include "hw_constants.h"
-#include "utils.h"
+#include "ctp7_modules/common/amc.h"
+#include "ctp7_modules/common/hw_constants.h"
+#include "ctp7_modules/common/utils.h"
 
 #include "xhal/common/rpc/register.h"
 

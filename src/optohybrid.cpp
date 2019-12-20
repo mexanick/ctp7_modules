@@ -1,7 +1,7 @@
-#include "optohybrid.h"
+#include "ctp7_modules/common/optohybrid.h"
 
-#include "amc.h"
-#include "hw_constants.h"
+#include "ctp7_modules/common/amc.h"
+#include "ctp7_modules/common/hw_constants.h"
 
 #include "xhal/common/rpc/register.h"
 

@@ -1,4 +1,4 @@
-#include "moduleapi.h"
+#include "ctp7_modules/server/moduleapi.h"
 #include <libwisci2c.h>
 #include <cardconfig.h>
 

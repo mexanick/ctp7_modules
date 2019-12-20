@@ -1,6 +1,6 @@
-#include "moduleapi.h"
+#include "ctp7_modules/server/moduleapi.h"
 #include <libmemsvc.h>
-#include "memhub.h"
+#include "ctp7_modules/server/memhub.h"
 
 #include "xhal/common/rpc/register.h"
 

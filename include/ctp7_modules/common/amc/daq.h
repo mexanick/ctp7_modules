@@ -6,7 +6,7 @@
 #ifndef AMC_DAQ_H
 #define AMC_DAQ_H
 
-#include "utils.h"
+#include "ctp7_modules/common/utils.h"
 
 namespace amc {
   namespace daq {

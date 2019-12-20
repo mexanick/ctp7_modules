@@ -3,7 +3,7 @@
  * \brief AMC TTC methods for RPC modules
  */
 
-#include "amc/ttc.h"
+#include "ctp7_modules/common/amc/ttc.h"
 
 #include <chrono>
 #include <iomanip>

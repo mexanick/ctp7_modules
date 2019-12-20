@@ -7,9 +7,9 @@
 #ifndef AMC_SCA_H
 #define AMC_SCA_H
 
-#include "utils.h"
+#include "ctp7_modules/common/utils.h"
 
-#include "amc/sca_enums.h"
+#include "ctp7_modules/common/amc/sca_enums.h"
 
 namespace amc {
   namespace sca {

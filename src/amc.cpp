@@ -5,12 +5,12 @@
  *  \author Brian Dorney <brian.l.dorney@cern.ch>
  */
 
-#include "amc.h"
-#include "amc/ttc.h"
-#include "amc/daq.h"
-#include "amc/sca.h"
-#include "amc/blaster_ram.h"
-#include "hw_constants.h"
+#include "ctp7_modules/common/amc.h"
+#include "ctp7_modules/common/amc/ttc.h"
+#include "ctp7_modules/common/amc/daq.h"
+#include "ctp7_modules/common/amc/sca.h"
+#include "ctp7_modules/common/amc/blaster_ram.h"
+#include "ctp7_modules/common/hw_constants.h"
 
 #include "xhal/common/rpc/register.h"
 

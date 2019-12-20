@@ -3,8 +3,8 @@
  * \brief AMC SCA methods for RPC modules
  */
 
-#include "amc/sca.h"
-#include "hw_constants.h"
+#include "ctp7_modules/common/amc/sca.h"
+#include "ctp7_modules/common/hw_constants.h"
 
 #include <sstream>
 #include <string>

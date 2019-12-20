@@ -7,11 +7,11 @@
 #ifndef UTILS_H
 #define UTILS_H
 
-#include "moduleapi.h"
-#include "memhub.h"
+#include "ctp7_modules/server/moduleapi.h"
+#include "ctp7_modules/server/memhub.h"
 #include <libmemsvc.h>
 
-#include "lmdb_cpp_wrapper.h"
+#include "ctp7_modules/server/lmdb_cpp_wrapper.h"
 
 #include "xhal/common/utils/XHALXMLParser.h"
 #include "xhal/common/rpc/common.h"
@@ -160,7 +160,7 @@ namespace utils {
        *  \param \c b number to add to \c a
        *
        *  \returns \c 0xffffffff in the case an overflow is detected, otherwise \c a+b
-       *            
+       *
        */
       inline uint32_t overflowTest(const uint32_t &a, const uint32_t &b) {
         const uint32_t overflowTest = a+b;

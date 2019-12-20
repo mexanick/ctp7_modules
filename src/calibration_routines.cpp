@@ -1,12 +1,12 @@
-#include "calibration_routines.h"
+#include "ctp7_modules/common/calibration_routines.h"
 
-#include "calibration_enums.h"
+#include "ctp7_modules/common/calibration_enums.h"
 
-#include "amc.h"
-#include "optohybrid.h"
-#include "utils.h"
-#include "vfat3.h"
-#include "hw_constants.h"
+#include "ctp7_modules/common/amc.h"
+#include "ctp7_modules/common/optohybrid.h"
+#include "ctp7_modules/common/utils.h"
+#include "ctp7_modules/common/vfat3.h"
+#include "ctp7_modules/common/hw_constants.h"
 
 #include "xhal/common/rpc/register.h"
 

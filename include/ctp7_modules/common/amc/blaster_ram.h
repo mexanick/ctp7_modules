@@ -6,9 +6,8 @@
 #ifndef AMC_BLASTER_RAM_H
 #define AMC_BLASTER_RAM_H
 
-#include "utils.h"
-
-#include "amc/blaster_ram_defs.h"
+#include "ctp7_modules/common/utils.h"
+#include "ctp7_modules/common/amc/blaster_ram_defs.h"
 
 #include <vector>
 
@@ -74,7 +73,7 @@ namespace amc {
          *
          *  \throws \c std::runtime_error if:
          *            * \c blob_sz does not match the size of the \c type specified
-         *            * \c type is not one of the allowed values 
+         *            * \c type is not one of the allowed values
          *
          *  \param \c type specifies which of the RAMs to read, options include:
          *           * \c BLASTERType::GBT - will return all GBT configurations for a single CTP7 BLASTER RAM

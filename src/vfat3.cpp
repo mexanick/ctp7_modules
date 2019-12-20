@@ -5,10 +5,10 @@
  *  \author Brian Dorney <brian.l.dorney@cern.ch>
  */
 
-#include "vfat3.h"
+#include "ctp7_modules/common/vfat3.h"
 
-#include "amc.h"
-#include "optohybrid.h"
+#include "ctp7_modules/common/amc.h"
+#include "ctp7_modules/common/optohybrid.h"
 
 #include "reedmuller.h"
 

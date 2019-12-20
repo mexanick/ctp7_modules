@@ -3,9 +3,9 @@
  * \brief AMC DAQ methods for RPC modules
  */
 
-#include "amc/daq.h"
-#include "amc/ttc.h"
-#include "amc/sca.h"
+#include "ctp7_modules/common/amc/daq.h"
+#include "ctp7_modules/common/amc/ttc.h"
+#include "ctp7_modules/common/amc/sca.h"
 
 void amc::daq::enableDAQLink::operator()(uint32_t const& enableMask) const
 {
