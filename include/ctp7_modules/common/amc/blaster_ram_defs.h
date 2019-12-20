@@ -1,5 +1,5 @@
-#ifndef BLASTER_RAM_DEFS_H
-#define BLASTER_RAM_DEFS_H
+#ifndef COMMON_BLASTER_RAM_DEFS_H
+#define COMMON_BLASTER_RAM_DEFS_H
 
 class BLASTERSettings {
  public:

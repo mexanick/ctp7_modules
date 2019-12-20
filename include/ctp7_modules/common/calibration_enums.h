@@ -1,5 +1,5 @@
-#ifndef Calibration_ENUMS_H
-#define Calibration_ENUMS_H
+#ifndef COMMON_CALIBRATION_ENUMS_H
+#define COMMON_CALIBRATION_ENUMS_H
 
 #include <stdint.h>
 

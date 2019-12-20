@@ -5,12 +5,13 @@
  *  \author Brian Dorney <brian.l.dorney@cern.ch>
  */
 
-#ifndef CALIBRATION_ROUTINES_H
-#define CALIBRATION_ROUTINES_H
+#ifndef COMMON_CALIBRATION_ROUTINES_H
+#define COMMON_CALIBRATION_ROUTINES_H
 
-#include "utils.h"
+#include "xhal/common/rpc/common.h"
 
 #include <map>
+#include <unordered_map>
 #include <string>
 #include <tuple>
 #include <vector>
@@ -54,24 +55,6 @@ namespace calibration {
     // {40, std::make_tuple("NOREG_ADCVinM", 0,)}, //ADC Vin M
     // {41, std::make_tuple("CFG_", 0,)},
   };
-
-  /*!
-   *  \brief Unmask the channel of interest and masks all the other
-   *
-   *  \param \c ohN OptoHybrid optical link number
-   *  \param \c vfatN VFAT position
-   *  \param \c ch Channel of interest
-   *
-   *  \returns Original channel masks in the form of an \c std::unordered_map <chanMaskAddr, mask>
-   */
-  std::unordered_map<uint32_t, uint32_t> setSingleChanMask(const uint8_t &ohN, const uint8_t &vfatN, const uint8_t &ch);
-
-  /*!
-   *  \brief Applies channel masks to
-   *
-   *  \param \c channelMasks unordered map of channel masks as obtained from \c setSingleChanMask
-   */
-  void applyChanMask(const std::unordered_map<uint32_t, uint32_t> &channelMasks);
 
   /*!
    *  \brief Configures the calibration pulse for a specified channel

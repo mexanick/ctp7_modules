@@ -4,10 +4,10 @@
  * \author Jared Sturdy <sturdy@cern.ch>
  */
 
-#ifndef AMC_TTC_H
-#define AMC_TTC_H
+#ifndef COMMON_AMC_TTC_H
+#define COMMON_AMC_TTC_H
 
-#include "ctp7_modules/common/utils.h"
+#include "xhal/common/rpc/common.h"
 
 namespace amc {
   namespace ttc {

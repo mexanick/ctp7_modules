@@ -6,9 +6,11 @@
  */
 
 #include "ctp7_modules/common/vfat3.h"
-
+#include "ctp7_modules/server/vfat3.h"
 #include "ctp7_modules/common/amc.h"
 #include "ctp7_modules/common/optohybrid.h"
+#include "ctp7_modules/common/utils.h"
+#include "ctp7_modules/server/utils.h"
 
 #include "reedmuller.h"
 

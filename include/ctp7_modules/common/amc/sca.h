@@ -4,12 +4,12 @@
  * \author Jared Sturdy <sturdy@cern.ch>
  */
 
-#ifndef AMC_SCA_H
-#define AMC_SCA_H
-
-#include "ctp7_modules/common/utils.h"
+#ifndef COMMON_AMC_SCA_H
+#define COMMON_AMC_SCA_H
 
 #include "ctp7_modules/common/amc/sca_enums.h"
+
+#include "xhal/common/rpc/common.h"
 
 namespace amc {
   namespace sca {
@@ -17,17 +17,6 @@ namespace amc {
     /*!
      * \defgroup sca SCA module functionality
      */
-
-    /*!
-     * \brief Prepare data for use with the SCA communication interfaces
-     *
-     * \details SCA TX/RX data is transmitted using the HDLC protocol, which is 16-bit length, and sent LSB to MSB.
-     *          In the HDLC packet, it is sent/received as [<16:31><0:15>].
-     *          The GEM_AMC firmware stores it as [<7:0><15:8><23:16><31:24>]
-     *
-     * \param \c data is the data to be converted to the appropriate ordering
-     */
-    uint32_t formatSCAData(uint32_t const& data);
 
     /*!
      * \brief Execute a command using the SCA interface

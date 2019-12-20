@@ -3,8 +3,8 @@
  *  \author Laurent Pétré <lpetre@ulb.ac.be>
  */
 
-#ifndef HW_CONSTANTS_H
-#define HW_CONSTANTS_H
+#ifndef COMMON_HW_CONSTANTS_H
+#define COMMON_HW_CONSTANTS_H
 
 #ifndef GEM_VARIANT
 #error You must define the GEM_VARIANT constant.

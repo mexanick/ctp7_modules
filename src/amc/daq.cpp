@@ -6,6 +6,8 @@
 #include "ctp7_modules/common/amc/daq.h"
 #include "ctp7_modules/common/amc/ttc.h"
 #include "ctp7_modules/common/amc/sca.h"
+#include "ctp7_modules/common/utils.h"
+#include "ctp7_modules/server/utils.h"
 
 void amc::daq::enableDAQLink::operator()(uint32_t const& enableMask) const
 {

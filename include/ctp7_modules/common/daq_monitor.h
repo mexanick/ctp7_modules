@@ -4,10 +4,10 @@
  *  \author Brin Dorney <brian.l.dorney@cern.ch>
  */
 
-#ifndef DAQ_MONITOR_H
-#define DAQ_MONITOR_H
+#ifndef COMMON_DAQ_MONITOR_H
+#define COMMON_DAQ_MONITOR_H
 
-#include "utils.h"
+#include "xhal/common/rpc/common.h"
 
 #include <map>
 #include <string>

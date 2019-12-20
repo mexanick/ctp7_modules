@@ -3,10 +3,10 @@
  *  \author Jared Sturdy <sturdy@cern.ch>
  */
 
-#ifndef AMC_DAQ_H
-#define AMC_DAQ_H
+#ifndef COMMON_AMC_DAQ_H
+#define COMMON_AMC_DAQ_H
 
-#include "ctp7_modules/common/utils.h"
+#include "xhal/common/rpc/common.h"
 
 namespace amc {
   namespace daq {

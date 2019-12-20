@@ -3,6 +3,9 @@
  */
 
 #include "ctp7_modules/common/amc/blaster_ram.h"
+#include "ctp7_modules/server/amc/blaster_ram.h"
+#include "ctp7_modules/common/utils.h"
+#include "ctp7_modules/server/utils.h"
 #include "ctp7_modules/common/hw_constants.h"
 
 #include <chrono>

@@ -3,8 +3,8 @@
  *  \author Laurent Pétré <lpetre@ulb.ac.be>
  */
 
-#ifndef HW_CONSTANTS_CHECKS_H
-#define HW_CONSTANTS_CHECKS_H
+#ifndef COMMON_HW_CONSTANTS_CHECKS_H
+#define COMMON_HW_CONSTANTS_CHECKS_H
 
 #include "hw_constants.h"
 

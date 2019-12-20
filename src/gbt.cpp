@@ -4,8 +4,9 @@
  */
 
 #include "ctp7_modules/common/gbt.h"
-
-#include "ctp7_modules/common/hw_constants.h"
+#include "ctp7_modules/server/gbt.h"
+#include "ctp7_modules/common/utils.h"
+#include "ctp7_modules/server/utils.h"
 #include "ctp7_modules/common/hw_constants_checks.h"
 
 #include "xhal/common/rpc/register.h"

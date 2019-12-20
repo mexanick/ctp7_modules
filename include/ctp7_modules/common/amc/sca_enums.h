@@ -1,5 +1,5 @@
-#ifndef SCA_ENUMS_H
-#define SCA_ENUMS_H
+#ifndef COMMON_SCA_ENUMS_H
+#define COMMON_SCA_ENUMS_H
 
 class SCASettings {
  public:

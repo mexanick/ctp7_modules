@@ -1,10 +1,11 @@
 #include "ctp7_modules/common/calibration_routines.h"
-
+#include "ctp7_modules/server/calibration_routines.h"
 #include "ctp7_modules/common/calibration_enums.h"
-
 #include "ctp7_modules/common/amc.h"
+#include "ctp7_modules/server/amc.h"
 #include "ctp7_modules/common/optohybrid.h"
 #include "ctp7_modules/common/utils.h"
+#include "ctp7_modules/server/utils.h"
 #include "ctp7_modules/common/vfat3.h"
 #include "ctp7_modules/common/hw_constants.h"
 

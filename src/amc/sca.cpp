@@ -4,6 +4,9 @@
  */
 
 #include "ctp7_modules/common/amc/sca.h"
+#include "ctp7_modules/server/amc/sca.h"
+#include "ctp7_modules/common/utils.h"
+#include "ctp7_modules/server/utils.h"
 #include "ctp7_modules/common/hw_constants.h"
 
 #include <sstream>

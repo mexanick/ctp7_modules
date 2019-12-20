@@ -5,27 +5,16 @@
  *  \author Brian Dorney <brian.l.dorney@cern.ch>
  */
 
-#ifndef AMC_H
-#define AMC_H
+#ifndef COMMON_AMC_H
+#define COMMON_AMC_H
 
-#include "ctp7_modules/common/utils.h"
+#include "xhal/common/rpc/common.h"
 
 #include <map>
 #include <string>
 #include <vector>
 
 namespace amc {
-
-  /*!
-   *  \brief Returns AMC FW version
-   *
-   *  \throws \c std::runtime_error in the case FW version is not 1.X or 3.X
-   *
-   *  \param \c caller_name name of method which called the FW version check FIXME necessary?
-   *
-   *  \returns the major FW version number
-   */
-  uint32_t fw_version_check(const char *caller_name);
 
   /*!
    *  \brief returns the vfatMask for the specified OptoHybrid

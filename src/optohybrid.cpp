@@ -1,7 +1,9 @@
 #include "ctp7_modules/common/optohybrid.h"
-
-#include "ctp7_modules/common/amc.h"
+#include "ctp7_modules/server/amc.h"
 #include "ctp7_modules/common/hw_constants.h"
+#include "ctp7_modules/common/utils.h"
+#include "ctp7_modules/server/utils.h"
+#include "ctp7_modules/common/vfat_parameters.h"
 
 #include "xhal/common/rpc/register.h"
 

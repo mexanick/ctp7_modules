@@ -5,10 +5,10 @@
  */
 
 #include "ctp7_modules/common/daq_monitor.h"
-
-#include "ctp7_modules/common/amc.h"
+#include "ctp7_modules/server/amc.h"
 #include "ctp7_modules/common/hw_constants.h"
 #include "ctp7_modules/common/utils.h"
+#include "ctp7_modules/server/utils.h"
 
 #include "xhal/common/rpc/register.h"
 

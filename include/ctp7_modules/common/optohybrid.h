@@ -4,11 +4,10 @@
  *  \author Cameron Bravo <cbravo135@gmail.com>
  *  \author Brin Dorney <brian.l.dorney@cern.ch>
  */
-#ifndef OPTOHYBRID_H
-#define OPTOHYBRID_H
+#ifndef COMMON_OPTOHYBRID_H
+#define COMMON_OPTOHYBRID_H
 
-#include "ctp7_modules/common/utils.h"
-#include "ctp7_modules/common/vfat_parameters.h"
+#include "xhal/common/rpc/common.h"
 
 #include <map>
 #include <string>
