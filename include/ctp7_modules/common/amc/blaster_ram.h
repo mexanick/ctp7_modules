@@ -29,7 +29,7 @@ namespace amc {
          */
         struct getRAMMaxSize : public xhal::common::rpc::Method
         {
-            uint32_t operator()(BLASTERTypeT const& type) const;
+            uint32_t operator()(BLASTERType const& type) const;
         };
 
         /*!
@@ -61,7 +61,7 @@ namespace amc {
          */
         struct readConfRAM : public xhal::common::rpc::Method
         {
-            std::vector<uint32_t> operator()(BLASTERTypeT const& type, size_t const& blob_sz) const;
+            std::vector<uint32_t> operator()(BLASTERType const& type, size_t const& blob_sz) const;
         };
 
         /*!
@@ -160,7 +160,7 @@ namespace amc {
          */
         struct writeConfRAM : public xhal::common::rpc::Method
         {
-            void operator()(BLASTERTypeT const& type, std::vector<uint32_t> blob) const;
+            void operator()(BLASTERType const& type, std::vector<uint32_t> blob) const;
         };
 
         /*!

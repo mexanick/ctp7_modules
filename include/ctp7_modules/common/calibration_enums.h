@@ -16,4 +16,16 @@ namespace calibration {
     CURRENT  = 0x2,  ///< Calibration circuit operates in current source mode
   };
 }
+
+namespace xhal {
+  namespace common {
+    namespace rpc {
+      template<typename Message>
+      inline void serialize(Message &msg, calibration::VFATCalibrationMode &value) {
+        msg & value;
+      }
+    }
+  }
+}
+
 #endif

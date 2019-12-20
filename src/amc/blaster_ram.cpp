@@ -20,7 +20,7 @@ namespace amc {
   }
 }
 
-uint32_t amc::blaster::getRAMMaxSize::operator()(BLASTERTypeT const& type) const
+uint32_t amc::blaster::getRAMMaxSize::operator()(BLASTERType const& type) const
 {
   uint32_t ram_size = 0x0;
   switch (type) {
@@ -40,7 +40,7 @@ uint32_t amc::blaster::getRAMMaxSize::operator()(BLASTERTypeT const& type) const
   }
 
   std::stringstream errmsg;
-  errmsg << "Invalid BLASTER type " << type << " specified";
+  errmsg << "Invalid BLASTER type " << std::hex << std::setw(2) << std::setfill('0') << static_cast<uint8_t>(type) << std::dec << " specified";
   LOG4CPLUS_ERROR(logger, errmsg.str());
 
   // FIXME throw? or return 0?
@@ -48,14 +48,14 @@ uint32_t amc::blaster::getRAMMaxSize::operator()(BLASTERTypeT const& type) const
   // return ram_size;
 }
 
-bool amc::blaster::checkBLOBSize(BLASTERTypeT const& type, size_t const& sz)
+bool amc::blaster::checkBLOBSize(BLASTERType const& type, size_t const& sz)
 {
   uint32_t ram_sz = getRAMMaxSize{}(type);
   bool valid = (sz == ram_sz) ? true : false;
   return valid;
 }
 
-uint32_t amc::blaster::getRAMBaseAddr(BLASTERTypeT const& type, uint8_t const& ohN, uint8_t const& partN)
+uint32_t amc::blaster::getRAMBaseAddr(BLASTERType const& type, uint8_t const& ohN, uint8_t const& partN)
 {
   uint32_t base = 0x0;
   std::string regName;
@@ -101,12 +101,12 @@ uint32_t amc::blaster::getRAMBaseAddr(BLASTERTypeT const& type, uint8_t const& o
   }
 
   std::stringstream errmsg;
-  errmsg << "Invalid BLASTER type " << type << " specified";
+  errmsg << "Invalid BLASTER type " << std::hex << std::setw(2) << std::setfill('0') << static_cast<uint8_t>(type) << std::dec << " specified";
   LOG4CPLUS_ERROR(logger, errmsg.str());
   throw std::runtime_error(errmsg.str());
 }
 
-std::vector<uint32_t> amc::blaster::readConfRAM::operator()(BLASTERTypeT const& type, size_t const& blob_sz) const
+std::vector<uint32_t> amc::blaster::readConfRAM::operator()(BLASTERType const& type, size_t const& blob_sz) const
 {
   uint32_t nwords = 0x0;
   // uint32_t offset = 0x0;
@@ -124,7 +124,7 @@ std::vector<uint32_t> amc::blaster::readConfRAM::operator()(BLASTERTypeT const& 
   std::stringstream regName;
   regName << "GEM_AMC.CONFIG_BLASTER.RAM";
 
-  LOG4CPLUS_DEBUG(logger, "readConfRAM with type: 0x" << std::hex << type << std:: dec << ", size: " << blob_sz);
+  LOG4CPLUS_DEBUG(logger, "readConfRAM with type: 0x" << std::hex << static_cast<uint8_t>(type) << std:: dec << ", size: " << blob_sz);
   switch (type) {
   case (BLASTERType::GBT):
     blob.resize(getRAMMaxSize{}(BLASTERType::GBT));
@@ -159,7 +159,7 @@ std::vector<uint32_t> amc::blaster::readConfRAM::operator()(BLASTERTypeT const& 
   default:
     std::stringstream errmsg;
     errmsg << "Invalid BLASTER RAM type "
-           << std::hex << std::setw(8) << std::setfill('0') << type << std::dec
+           << std::hex << std::setw(8) << std::setfill('0') << static_cast<uint8_t>(type) << std::dec
            << " selected for read.";
     LOG4CPLUS_ERROR(logger, errmsg.str());
 
@@ -262,7 +262,7 @@ std::vector<uint32_t> amc::blaster::readVFATConfRAM::operator()(const uint16_t &
   }
 }
 
-void amc::blaster::writeConfRAM::operator()(BLASTERTypeT const& type, std::vector<uint32_t> blob) const
+void amc::blaster::writeConfRAM::operator()(BLASTERType const& type, std::vector<uint32_t> blob) const
 {
   if (!checkBLOBSize(type, blob.size())) {
     std::stringstream errmsg;
@@ -283,7 +283,7 @@ void amc::blaster::writeConfRAM::operator()(BLASTERTypeT const& type, std::vecto
   auto iter = blob.begin();
   std::vector<uint32_t> tmpblob; // = blob;
 
-  LOG4CPLUS_WARN(logger, "writeConfRAM with type: 0x" << std::hex << type << std::dec << ", size: " << blob.size());
+  LOG4CPLUS_WARN(logger, "writeConfRAM with type: 0x" << std::hex << static_cast<uint8_t>(type) << std::dec << ", size: " << blob.size());
   switch (type) {
   case (BLASTERType::GBT):
     writeGBTConfRAM{}(blob);
@@ -317,7 +317,7 @@ void amc::blaster::writeConfRAM::operator()(BLASTERTypeT const& type, std::vecto
     // writeConfRAM{}(BLASTERType::ALL, blob, blob.size());
     std::stringstream errmsg;
     errmsg << "Invalid BLASTER RAM type "
-           << std::hex << std::setw(8) << std::setfill('0') << type << std::dec
+           << std::hex << std::setw(8) << std::setfill('0') << static_cast<uint8_t>(type) << std::dec
            << " selected for write.";
     LOG4CPLUS_ERROR(logger, errmsg.str());
     throw std::runtime_error(errmsg.str());
