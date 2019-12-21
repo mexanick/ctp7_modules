@@ -11,10 +11,8 @@
 
 #include "xhal/common/rpc/register.h"
 
-// #include <algorithm>
 #include <chrono>
 #include <math.h>
-// #include <pthread.h>
 #include <thread>
 
 namespace calibration {

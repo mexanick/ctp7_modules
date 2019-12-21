@@ -136,7 +136,9 @@ void gbt::writeGBTPhase::operator()(const uint32_t &ohN, const uint32_t &vfatN, 
 
     // Write the triplicated phase registers
     const uint32_t gbtN = gbt::elinkMappings::VFAT_TO_GBT[vfatN];
-    LOG4CPLUS_INFO(logger, stdsprintf("Writing %u to the VFAT #%u phase of GBT #%u, on OH #%u.", phase, vfatN, gbtN, ohN));
+    LOG4CPLUS_INFO(logger, "Writing " << phase << " to the VFAT" << vfatN
+                   << " phase of GBT" << gbtN
+                   << ", on OH" << ohN);
 
     for (size_t regN = 0; regN < 3; ++regN) {
         const uint16_t regAddress = elinkMappings::ELINK_TO_REGISTERS[elinkMappings::VFAT_TO_ELINK[vfatN]][regN];

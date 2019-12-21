@@ -263,7 +263,7 @@ std::vector<uint32_t> vfat3::getChannelRegistersVFAT3::operator()(const uint16_t
       chanAddr = utils::getAddress(regName);
 
       // Build the channel register
-      LOG4CPLUS_INFO(logger, stdsprintf("Reading channel register for VFAT%i chan %i",vfatN,chan));
+      LOG4CPLUS_INFO(logger, "Reading channel register for VFAT" << vfatN << " channel " << chan);
       chanRegData.at(idx) = utils::readRawAddress(chanAddr);
       // chanRegData.push_back(readRawAddress(chanAddr));  // FIXME only push_back/emplace_back if we don't preallocate
       std::this_thread::sleep_for(std::chrono::microseconds(200));
