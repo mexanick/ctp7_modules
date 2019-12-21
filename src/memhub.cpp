@@ -7,10 +7,6 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <unistd.h>
-// #include <stdio.h>  // FIXME necessary?
-// #include <stdlib.h> // FIXME necessary?
-// #include <sys/stat.h>  // FIXME necessary?
-// #include <sys/types.h> // FIXME necessary?
 
 #define SEM_NAME "/memhub"
 #define SEM_PERMS (S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP)

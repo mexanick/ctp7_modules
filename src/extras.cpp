@@ -3,9 +3,12 @@
  *  \author Mykhailo Dalchenko <mykhailo.dalchenko@cern.ch>
  */
 
-#include "ctp7_modules/server/moduleapi.h"
 #include "ctp7_modules/server/memhub.h"
 #include "ctp7_modules/common/utils.h"
+
+#include <libmemsvc.h>
+
+#include "xhal/extern/ModuleManager.h"
 
 #include <vector>
 #include <unordered_map>

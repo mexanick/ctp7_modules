@@ -1,8 +1,9 @@
-#include "ctp7_modules/server/moduleapi.h"
 #include <libwisci2c.h>
 #include <cardconfig.h>
+#include <libmemsvc.h>
 
 #include "xhal/common/rpc/register.h"
+#include "xhal/extern/ModuleManager.h"
 
 #include <log4cplus/logger.h>
 #include <log4cplus/loggingmacros.h>
@@ -10,8 +11,6 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
-// #include <sys/types.h> // FIXME necessary?
-// #include <sys/stat.h>  // FIXME necessary?
 
 #include <iomanip>
 #include <map>
