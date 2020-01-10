@@ -94,22 +94,20 @@ std::map<uint32_t, std::vector<uint32_t>> gbt::scanGBTPhases::operator()(const u
 
 void gbt::writeGBTConfig::operator()(const uint32_t &ohN, const uint32_t &gbtN, const config_t &config) const
 {
-    std::stringstream logOH_GBT_config;
-    logOH_GBT_config << "Writing the configuration of OH #" << ohN << " - GBTX #" << gbtN << ".";
-    LOG4CPLUS_INFO(logger, logOH_GBT_config);
+    LOG4CPLUS_INFO(logger, "Writing the configuration of OH #" << ohN << " - GBTX #" << gbtN << ".");
 
     // ohN check
     const uint32_t ohMax = utils::readReg("GEM_AMC.GEM_SYSTEM.CONFIG.NUM_OF_OH");
     std::stringstream errmsg;
-    if (ohN >= ohMax)
+    if (ohN >= ohMax) {
         errmsg << "The ohN parameter supplied (" << ohN << ") exceeds the number of OH's supported by the CTP7 (" << ohMax << ").";
         throw std::range_error(errmsg.str());
-
+    }
     // gbtN check
-    if (gbtN >= GBTS_PER_OH)
+    if (gbtN >= GBTS_PER_OH) {
         errmsg << "The gbtN parameter supplied (" << ohN << ") exceeds the number of GBT's per OH (" << GBTS_PER_OH << ").";
         throw std::range_error(errmsg.str());
-
+    }
     // Write all the registers
     for (size_t address = 0; address < CONFIG_SIZE; ++address) {
         writeGBTReg(ohN, gbtN, static_cast<uint16_t>(address), config[address]);
@@ -118,21 +116,20 @@ void gbt::writeGBTConfig::operator()(const uint32_t &ohN, const uint32_t &gbtN, 
 
 void gbt::writeGBTPhase::operator()(const uint32_t &ohN, const uint32_t &vfatN, const uint8_t &phase) const
 {
-    std::stringstream logOH_vfatphase;
-    logOH_vfatphase << "Writing phase " << phase << " to VFAT #" << vfatN << " of OH #" << ohN << ".";
-    LOG4CPLUS_INFO(logger, logOH_vfatphase);
+    LOG4CPLUS_INFO(logger, "Writing phase " << phase << " to VFAT #" << vfatN << " of OH #" << ohN << ".");
+
     // ohN check
     const uint32_t ohMax = utils::readReg("GEM_AMC.GEM_SYSTEM.CONFIG.NUM_OF_OH");
     std::stringstream errmsg;
-    if (ohN >= ohMax)
+    if (ohN >= ohMax) {
         errmsg << "The ohN parameter supplied (" << ohN << ") exceeds the number of OH's supported by the CTP7 (" << ohMax << ").";
         throw std::range_error(errmsg.str());
-
+    }
     // vfatN check
-    if (vfatN >= oh::VFATS_PER_OH)
+    if (vfatN >= oh::VFATS_PER_OH) {
         errmsg << "The vfatN parameter supplied (" << vfatN << ") exceeds the number of VFAT's per OH (" << oh::VFATS_PER_OH << ").";
         throw std::range_error(errmsg.str());
-
+    }
     // phase check
     checkPhase(phase);
 
@@ -152,15 +149,15 @@ void gbt::writeGBTReg(const uint32_t ohN, const uint32_t gbtN, const uint16_t ad
 {
     // Check that the GBT exists
     std::stringstream errmsg;
-    if (gbtN >= GBTS_PER_OH)
+    if (gbtN >= GBTS_PER_OH) {
         errmsg << "The gbtN parameter supplied (" << gbtN << ") is larger than the number of GBT's per OH (" << GBTS_PER_OH << ").";
         throw std::range_error(errmsg.str());
-
+    }
     // Check that the address is writable
-    if (address >= CONFIG_SIZE)
+    if (address >= CONFIG_SIZE) {
         errmsg << "GBT has " << CONFIG_SIZE-1 << "writable addresses while the provided address is" << address << ".";
         throw std::range_error(errmsg.str());
-
+    }
     // GBT registers are 8 bits long
     utils::writeReg("GEM_AMC.SLOW_CONTROL.IC.READ_WRITE_LENGTH", 1);
 
