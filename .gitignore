@@ -3,19 +3,30 @@
 
 # Don't ignore git settings
 !.gitignore
+!.gitmodules
 !.github
 
 # Don't Ignore special files
-!apps.common.mk
 !README.md
 !Makefile
+!*.mk
+!spec.template
+!.gitlab-ci.yml
 !setup.sh
 
 # Don't ignore subdirectories
 !*/
 
+# But ignore make generated subdirectories
+x86_64
+arm
+pkg
+repos
+release
+
 # Don't ignore source files
 !*.cpp
+!*.cxx
 !*.h
 
 # Don't ignore configuration
