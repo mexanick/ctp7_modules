@@ -19,10 +19,12 @@ ConfigDir:=$(ProjectPath)/config
 include $(ConfigDir)/mfCommonDefs.mk
 
 ifeq ($(Arch),x86_64)
+PETA_STAGE=$(PETA_PATH)/glib
 include $(ConfigDir)/mfPythonDefs.mk
 CFLAGS+=-Wall -fPIC
-ADDFLAGS=-std=c++11 -std=gnu++11 -m64
+ADDFLAGS=-std=c++1y -std=gnu++1y -m64
 else
+PETA_STAGE=$(PETA_PATH)/ctp7
 include $(ConfigDir)/mfZynq.mk
 ADDFLAGS=-std=c++14 -std=gnu++14
 endif
@@ -37,9 +39,9 @@ PackageLibraryDir:=$(PackagePath)/lib
 PackageExecDir:=$(PackagePath)/bin
 # PackageDocsDir:=$(PackagePath)/doc/_build/html
 
-CTP7_MODULES_VER_MAJOR:=$(shell ./config/tag2rel.sh | awk '{split($$0,a," "); print a[1];}' | awk '{split($$0,b,":"); print b[2];}')
-CTP7_MODULES_VER_MINOR:=$(shell ./config/tag2rel.sh | awk '{split($$0,a," "); print a[2];}' | awk '{split($$0,b,":"); print b[2];}')
-CTP7_MODULES_VER_PATCH:=$(shell ./config/tag2rel.sh | awk '{split($$0,a," "); print a[3];}' | awk '{split($$0,b,":"); print b[2];}')
+CTP7_MODULES_VER_MAJOR:=$(shell $(ConfigDir)/tag2rel.sh | awk '{split($$0,a," "); print a[1];}' | awk '{split($$0,b,":"); print b[2];}')
+CTP7_MODULES_VER_MINOR:=$(shell $(ConfigDir)/tag2rel.sh | awk '{split($$0,a," "); print a[2];}' | awk '{split($$0,b,":"); print b[2];}')
+CTP7_MODULES_VER_PATCH:=$(shell $(ConfigDir)/tag2rel.sh | awk '{split($$0,a," "); print a[3];}' | awk '{split($$0,b,":"); print b[2];}')
 
 INSTALL_PREFIX?=/mnt/persistent/ctp7_modules
 
@@ -52,8 +54,13 @@ endif
 
 IncludeDirs = $(PackageIncludeDir)
 IncludeDirs+= $(XHAL_ROOT)/include
-IncludeDirs+= /opt/wiscrpcsvc/include
-IncludeDirs+= /opt/reedmuller/include
+IncludeDirs+= $(WISCRPC_ROOT)/include
+IncludeDirs+= $(REEDMULLER_ROOT)/include
+ifeq ($(Arch),x86_64)
+IncludeDirs+= $(PackageIncludeDir)/$(Project)/server/x86_64  ## for building libmemsvc on x86_64
+IncludeDirs+= $(XDAQ_ROOT)/include                           ## for log4cplus
+IncludeDirs+= $(CACTUS_ROOT)/include                         ## for uhal, for building libmemsvc on x86_64
+endif
 INC=$(IncludeDirs:%=-I%)
 
 ifndef GEM_VARIANT
@@ -67,11 +74,14 @@ LDFLAGS+=-Wl,--as-needed
 ifeq ($(Arch),x86_64)
 LibraryDirs+=$(XHAL_ROOT)/lib
 LibraryDirs+=$(REEDMULLER_ROOT)/lib
-LibraryDirs+=/opt/wiscrpcsvc/lib
+LibraryDirs+=$(WISCRPC_ROOT)/lib ## for libmemsvc
+LibraryDirs+=$(XDAQ_ROOT)/lib    ## for log4cplus and xerces
+LibraryDirs+=$(CACTUS_ROOT)/lib  ## uhal for libmemsvc
 else
 ## Need solution for system install as well as test install against specific new version
 LibraryDirs+=$(PETA_STAGE)/mnt/persistent/xhal/lib
 LibraryDirs+=$(PETA_STAGE)/mnt/persistent/reedmuller/lib
+#LibraryDirs+=$(PETA_STAGE)/mnt/persistent/log4cplus/lib
 endif
 
 LibraryDirs+=$(PackageLibraryDir)
@@ -84,15 +94,18 @@ TargetObjects:= $(patsubst %.d,%.o,$(Dependencies))
 
 TargetLibraries:=memhub memory utils extras amc optohybrid vfat3 daq_monitor calibration_routines gbt
 ifeq ($(Arch),x86_64)
+TargetLibraries+=libmemsvc
 else
 TargetLibraries+=optical
 endif
 
+## Override the RPM_DIR variable because we're a special case
+RPM_DIR:=$(ProjectPath)/$(LongPackage)/rpm
 include $(ConfigDir)/mfRPMRules.mk
 
-$(PackageSpecFile): $(ProjectPath)/$(PackageName)/spec.template
+$(PackageSpecFile): $(ProjectPath)/spec.template
 
-.PHONY: rpc
+#.PHONY: rpc
 
 default: build
 	$(MakeDir) $(PackageDir)
@@ -109,13 +122,12 @@ endif
 ## this needs to reproduce the compiled tree because... wrong headed
 ## either do the make in the spec file, or don't make up your mind!
 $(PackageSourceTarball): $(TarballDependencies)
-	$(MakeDir) $(PackageDir)
-	@cp -rf lib $(PackageDir)
+	$(MakeDir) $(PackagePath)/$(PackageDir)
 ifeq ($(Arch),x86_64)
 	@echo nothing to do
 else
-	$(MakeDir) $(PackagePath)/$(PackageDir)/gem-peta-stage/ctp7/$(INSTALL_PATH)/lib
-	@cp -rfp $(PackageLibraryDir)/* $(PackagePath)/$(PackageDir)/gem-peta-stage/ctp7/$(INSTALL_PATH)/lib
+#	$(MakeDir) $(PackagePath)/$(PackageDir)/gem-peta-stage/ctp7/$(INSTALL_PATH)/lib
+#	@cp -rfp $(PackageLibraryDir)/* $(PackagePath)/$(PackageDir)/gem-peta-stage/ctp7/$(INSTALL_PATH)/lib
 endif
 	$(MakeDir) $(RPM_DIR)
 	@cp -rfp spec.template $(PackagePath)
@@ -126,13 +138,18 @@ endif
 	@cp -rfp $(PackageSourceDir) $(PackagePath)/$(PackageDir)/$(PackageName)
 	@cp -rfp $(PackageIncludeDir) $(PackagePath)/$(PackageDir)/$(PackageName)
 	@cp -rfp ctp7_modules.mk $(PackagePath)/$(PackageDir)/$(PackageName)/Makefile
-	@cp -rfp $(ProjectPath)/config $(PackagePath)/$(PackageDir)
-	cd $(PackagePath)/$(PackageDir)/..; \
-	    tar cjf $(PackageSourceTarball) . ;
+	perl -pi -e 's| -f ctp7_modules.mk||g' $(PackagePath)/$(PackageDir)/$(PackageName)/Makefile
+	@cp -rfp $(ProjectPath)/config $(PackagePath)/$(PackageDir)/$(PackageName)
+	pushd $(PackagePath)/$(PackageDir)/..; \
+	    tar cjf $(PackageSourceTarball) . ; popd;
 #	$(RM) $(PackagePath)/$(PackageDir)
 
 # Everything links against these libraries
-BASE_LINKS = -lxhal-base -llmdb -lwisci2c -llog4cplus
+BASE_LINKS = -lxhal-base -llmdb -llog4cplus
+ifeq ($(Arch),x86_64)
+else
+BASE_LINKS+= -lwisci2c
+endif
 
 # Generic shared object creation rule, need to accomodate cases where we have lib.o lib/sub.o
 pc:=%
@@ -161,7 +178,16 @@ $(PackageObjectDir)/%.d:
 $(TargetLibraries):
 
 # Define the target library dependencies
+ifeq ($(Arch),x86_64)
+libmemsvc:
+	TargetArch=$(TargetArch) $(MAKE) -f ctp7_modules.mk $(PackageLibraryDir)/libmemsvc.so -lcactus_uhal_uhal
+endif
+
+ifeq ($(Arch),x86_64)
+memhub: libmemsvc
+else
 memhub:
+endif
 	$(eval export EXTRA_LINKS=-lmemsvc)
 	TargetArch=$(TargetArch) $(MAKE) -f ctp7_modules.mk $(PackageLibraryDir)/memhub.so EXTRA_LINKS="$(EXTRA_LINKS)"
 
@@ -222,7 +248,7 @@ $(PackageExecDir)/%: $(PackageTestSourceDir)/%.cxx
 	g++ -O0 -g3 -fno-inline -std=c++11 -c $(INC) -MT $@ -MMD -MP -MF $(@D)/$(*F).Td -o $@ $<
 	mv $(@D)/$(*F).Td $(@D)/$(*F).d
 	touch $@
-	g++ -O0 -g3 -fno-inline -std=c++11 -o $@ $< $(INC) $(LDFLAGS) -L/opt/wiscrpcsvc/lib -lwiscrpcsvc
+	g++ -O0 -g3 -fno-inline -std=c++11 -o $@ $< $(INC) $(LDFLAGS) -L$(WISCRPC_ROOT)/lib -lwiscrpcsvc
 
 test: $(TestExecs)
 

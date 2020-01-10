@@ -40,6 +40,11 @@ namespace xhal {
       }
 
       template<typename Message>
+      inline void serialize(Message &msg, size_t &value) {
+        msg & value;
+      }
+
+      template<typename Message>
       inline void serialize(Message &msg, float &value) {
         msg & *(reinterpret_cast<uint32_t*>(&value));
       }

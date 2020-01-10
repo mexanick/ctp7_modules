@@ -608,7 +608,7 @@ void utils::writeBlock(const std::string &regName, const uint32_t *values, const
   }
 }
 
-void utils::writeBlock(const uint32_t &regAddr, const uint32_t *values, const size_t &size, const uint32_t &offset)
+void utils::writeBlock(const uint32_t &regAddr, const uint32_t *values, const uint32_t &size, const uint32_t &offset)
 {
   // This function doesn't make sense with an offset, why would we specify an offset when accessing by register address?
   // Maybe just to do validation checks on the size?

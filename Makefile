@@ -1,5 +1,5 @@
-TARGETS := arm
-#	x86_64
+TARGETS := arm \
+	x86_64
 
 TARGETS.RPM        := $(patsubst %,%.rpm,         $(TARGETS))
 TARGETS.CLEAN      := $(patsubst %,%.clean,       $(TARGETS))
