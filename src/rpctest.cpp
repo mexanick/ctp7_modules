@@ -1,4 +1,5 @@
-#include "moduleapi.h"
+#include "ctp7_modules/server/moduleapi.h"
+
 #include <string>
 #include <vector>
 

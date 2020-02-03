@@ -5,301 +5,243 @@
  *  \author Brian Dorney <brian.l.dorney@cern.ch>
  */
 
-#include "amc.h"
-#include "amc/ttc.h"
-#include "amc/daq.h"
-#include "amc/blaster_ram.h"
-#include "hw_constants.h"
-#include "amc/sca.h"
+#include "ctp7_modules/common/amc.h"
+#include "ctp7_modules/server/amc.h"
+#include "ctp7_modules/common/amc/ttc.h"
+#include "ctp7_modules/common/amc/daq.h"
+#include "ctp7_modules/common/amc/sca.h"
+#include "ctp7_modules/common/amc/blaster_ram.h"
+#include "ctp7_modules/common/hw_constants.h"
+#include "ctp7_modules/common/utils.h"
+#include "ctp7_modules/server/utils.h"
 
-#include "utils.h"
+#include "xhal/common/rpc/register.h"
 
 #include <chrono>
-#include <string>
 #include <time.h>
 #include <thread>
-#include <vector>
 
-unsigned int fw_version_check(const char* caller_name, localArgs *la)
-{
-    int iFWVersion = readReg(la, "GEM_AMC.GEM_SYSTEM.RELEASE.MAJOR");
-    char regBuf[200];
-    switch (iFWVersion) {
-        case 1:
-        {
-            LOGGER->log_message(LogManager::INFO, "System release major is 1, v2B electronics behavior");
-            break;
-        }
-        case 3:
-        {
-            LOGGER->log_message(LogManager::INFO, "System release major is 3, v3 electronics behavior");
-            break;
-        }
-        default:
-        {
-            LOGGER->log_message(LogManager::ERROR, "Unexpected value for system release major!");
-            sprintf(regBuf,"Unexpected value for system release major!");
-            la->response->set_string("error",regBuf);
-            break;
-        }
-    }
-    return iFWVersion;
+namespace amc {
+  auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("logger"));
 }
 
-uint32_t getOHVFATMaskLocal(localArgs * la, uint32_t ohN)
+uint32_t amc::fw_version_check(const char* caller_name)
 {
-    uint32_t mask = 0xffffff; //Start with all vfats masked for max VFAT/GEB amount
-    for (unsigned int vfatN=0; vfatN<oh::VFATS_PER_OH; ++vfatN) { //Loop over all vfats
-        uint32_t syncErrCnt = readReg(la, stdsprintf("GEM_AMC.OH_LINKS.OH%i.VFAT%i.SYNC_ERR_CNT",ohN,vfatN));
+    const uint32_t fw_maj = utils::readReg("GEM_AMC.GEM_SYSTEM.RELEASE.MAJOR");
 
-        if (syncErrCnt == 0x0) { //Case: zero sync errors, unmask this vfat
-            mask = mask - (0x1 << vfatN);
-        } //End Case: nonzero sync errors, mask this vfat
-    } //End loop over all vfats
+    switch (fw_maj) {
+    case 1:
+        LOG4CPLUS_INFO(logger, "System release major is 1, v2B electronics behavior");
+        break;
+    case 3:
+        LOG4CPLUS_INFO(logger, "System release major is 3, v3 electronics behavior");
+        break;
+    default:
+        LOG4CPLUS_ERROR(logger, "Unexpected value for system release major!");
+        throw std::runtime_error("Unexpected value for system release major!");
+    }
+    return fw_maj;
+}
+
+uint32_t amc::getOHVFATMask::operator()(const uint32_t &ohN) const
+{
+    uint32_t mask = 0x0;
+    std::stringstream regName;
+    for (unsigned int vfatN=0; vfatN<oh::VFATS_PER_OH; ++vfatN) {
+        regName.clear();
+        regName.str("");
+        regName << "GEM_AMC.OH_LINKS.OH" << ohN << ".VFAT" << vfatN << ".SYNC_ERR_CNT";
+        uint32_t syncErrCnt = utils::readReg(regName.str());
+
+        if (syncErrCnt > 0x0) {
+            mask |= (0x1 << vfatN);
+        }
+    }
 
     return mask;
-} //End getOHVFATMaskLocal()
+}
 
-void getOHVFATMask(const RPCMsg *request, RPCMsg *response) {
-    GETLOCALARGS(response);
-
-    uint32_t ohN = request->get_word("ohN");
-
-    uint32_t vfatMask = getOHVFATMaskLocal(&la, ohN);
-    LOGGER->log_message(LogManager::INFO, stdsprintf("Determined VFAT Mask for OH%i to be 0x%x",ohN,vfatMask));
-
-    response->set_word("vfatMask",vfatMask);
-
-    rtxn.abort();
-} //End getOHVFATMask(...)
-
-void getOHVFATMaskMultiLink(const RPCMsg *request, RPCMsg *response)
+std::vector<uint32_t> amc::getOHVFATMaskMultiLink::operator()(const uint32_t &ohMask) const
 {
-    GETLOCALARGS(response);
+    const uint32_t supOH = utils::readReg("GEM_AMC.GEM_SYSTEM.CONFIG.NUM_OF_OH");
 
-    int ohMask = 0xfff;
-    if (request->get_key_exists("ohMask")) {
-        ohMask = request->get_word("ohMask");
+    if ((ohMask & (0xffffffff << (supOH-1))) > 0) {
+        std::stringstream errmsg;
+        errmsg << "Supplied OH mask has bits set ("
+               << std::setw(4) << std::setfill('0') << std::hex << ohMask << std::dec
+               << ") outside the number of supported OHs for this firmware ("
+               << supOH << "), will only return values for the supported OHs";
+        LOG4CPLUS_WARN(logger, errmsg.str());
     }
 
-    unsigned int NOH = readReg(&la, "GEM_AMC.GEM_SYSTEM.CONFIG.NUM_OF_OH");
-    if (request->get_key_exists("NOH")) {
-        unsigned int NOH_requested = request->get_word("NOH");
-        if (NOH_requested <= NOH)
-            NOH = NOH_requested;
-        else
-            LOGGER->log_message(LogManager::WARNING, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register value (%i), NOH request will be disregarded",NOH_requested,NOH));
-    }
-
-    uint32_t ohVfatMaskArray[amc::OH_PER_AMC];
-    for (unsigned int ohN=0; ohN<NOH; ++ohN) {
-        // If this Optohybrid is masked skip it
+    std::vector<uint32_t> vfatMasks;
+    for (uint32_t ohN = 0; ohN < supOH; ++ohN) {
         if (!((ohMask >> ohN) & 0x1)) {
-            ohVfatMaskArray[ohN] = 0xffffff;
+            vfatMasks.push_back(0xffffff);
             continue;
+        } else {
+            vfatMasks.push_back(getOHVFATMask{}(ohN));
+            LOG4CPLUS_DEBUG(logger, "Determined VFAT Mask for OH" << ohN << " to be 0x"
+                            << std::setw(6) << std::setfill('0') << std::hex << vfatMasks.at(ohN) << std::dec);
         }
-        else{
-            ohVfatMaskArray[ohN] = getOHVFATMaskLocal(&la, ohN);
-            LOGGER->log_message(LogManager::INFO, stdsprintf("Determined VFAT Mask for OH%i to be 0x%x",ohN,ohVfatMaskArray[ohN]));
-        }
-    } //End Loop over all Optohybrids
-
-    //Debugging
-    LOGGER->log_message(LogManager::DEBUG, "All VFAT Masks found, listing:");
-    for (unsigned int ohN=0; ohN<amc::OH_PER_AMC; ++ohN) {
-        LOGGER->log_message(LogManager::DEBUG, stdsprintf("VFAT Mask for OH%i to be 0x%x",ohN,ohVfatMaskArray[ohN]));
     }
 
-    response->set_word_array("ohVfatMaskArray",ohVfatMaskArray,amc::OH_PER_AMC);
+    LOG4CPLUS_DEBUG(logger, "All VFAT Masks found, listing:");
+    for (uint8_t ohN = 0; ohN < supOH; ++ohN) {
+      LOG4CPLUS_DEBUG(logger, "VFAT mask for OH" << ohN << " to be 0x"
+                      << std::hex << std::setw(8) << std::setfill('0') << vfatMasks.at(ohN) << std::dec);
+    }
 
-    rtxn.abort();
-} //End getOHVFATMaskMultiLink(...)
+    return vfatMasks;
+}
 
-void repeatedRegRead(const RPCMsg *request, RPCMsg *response)
+std::vector<uint32_t> amc::sbitReadOut::operator()(const uint32_t &ohN, const uint32_t &acquireTime) const
 {
-    GETLOCALARGS(response);
-
-    bool breakOnFailure = request->get_word("breakOnFailure");
-    uint32_t nReads     = request->get_word("nReads");
-
-    const std::vector<std::string> vec_regList = request->get_string_array("regList");
-    slowCtrlErrCntVFAT vfatErrs;
-    for (auto const & regIter : vec_regList){
-        LOGGER->log_message(LogManager::INFO,stdsprintf("attempting to repeatedly reading register %s for %i times",regIter.c_str(), nReads));
-        vfatErrs = vfatErrs + repeatedRegReadLocal(&la, regIter, breakOnFailure, nReads);
-    } //End loop over registers in vec_regList
-
-    response->set_word("CRC_ERROR_CNT",          vfatErrs.crc);
-    response->set_word("PACKET_ERROR_CNT",       vfatErrs.packet);
-    response->set_word("BITSTUFFING_ERROR_CNT",  vfatErrs.bitstuffing);
-    response->set_word("TIMEOUT_ERROR_CNT",      vfatErrs.timeout);
-    response->set_word("AXI_STROBE_ERROR_CNT",   vfatErrs.axi_strobe);
-    response->set_word("SUM",                    vfatErrs.sum);
-    response->set_word("TRANSACTION_CNT",        vfatErrs.nTransactions);
-
-    rtxn.abort();
-} //End repeatedRegRead
-
-std::vector<uint32_t> sbitReadOutLocal(localArgs *la, uint32_t ohN, uint32_t acquireTime, bool *maxNetworkSizeReached)
-{
-    //Setup the sbit monitor
     const int nclusters = 8;
-    writeReg(la, "GEM_AMC.TRIGGER.SBIT_MONITOR.OH_SELECT", ohN);
-    uint32_t addrSbitMonReset=getAddress(la, "GEM_AMC.TRIGGER.SBIT_MONITOR.RESET");
-    uint32_t addrSbitL1ADelay=getAddress(la, "GEM_AMC.TRIGGER.SBIT_MONITOR.L1A_DELAY");
+    utils::writeReg("GEM_AMC.TRIGGER.SBIT_MONITOR.OH_SELECT", ohN);
+    uint32_t addrSbitMonReset = utils::getAddress("GEM_AMC.TRIGGER.SBIT_MONITOR.RESET");
+    uint32_t addrSbitL1ADelay = utils::getAddress("GEM_AMC.TRIGGER.SBIT_MONITOR.L1A_DELAY");
     uint32_t addrSbitCluster[nclusters];
-    for (int iCluster=0; iCluster < nclusters; ++iCluster) {
-        addrSbitCluster[iCluster] = getAddress(la, stdsprintf("GEM_AMC.TRIGGER.SBIT_MONITOR.CLUSTER%i",iCluster) );
+    for (int iCluster = 0; iCluster < nclusters; ++iCluster) {
+        addrSbitCluster[iCluster] = utils::getAddress("GEM_AMC.TRIGGER.SBIT_MONITOR.CLUSTER" + std::to_string(iCluster));
     }
 
-    //Take the VFATs out of slow control only mode
-    writeReg(la, "GEM_AMC.GEM_SYSTEM.VFAT3.SC_ONLY_MODE", 0x0);
+    // Take the VFATs out of slow control only mode
+    utils::writeReg("GEM_AMC.GEM_SYSTEM.VFAT3.SC_ONLY_MODE", 0x0);
 
-    //[0:10] address of sbit cluster
-    //[11:13] cluster size
-    //[14:26] L1A Delay (consider anything over 4095 as overflow)
     std::vector<uint32_t> storedSbits;
 
-    //readout sbits
     time_t acquisitionTime,startTime;
     bool acquire=true;
-    startTime=time(NULL);
-    (*maxNetworkSizeReached) = false;
+    startTime=time(nullptr);
     uint32_t l1ADelay;
-    while(acquire) {
-        if ( sizeof(uint32_t) * storedSbits.size() > 65000 ) { //Max TCP/IP message is 65535
-            (*maxNetworkSizeReached) = true;
-            break;
+    while (acquire) {
+        // Reset monitors
+        utils::writeRawAddress(addrSbitMonReset, 0x1);
+
+        // wait for 4095 clock cycles then read L1A delay
+        std::this_thread::sleep_for (std::chrono::nanoseconds(0xfff*25));
+        l1ADelay = utils::readRawAddress(addrSbitL1ADelay);
+        if (l1ADelay > 0xfff) {
+            l1ADelay = 0xfff;
         }
 
-        //Reset monitors
-        writeRawAddress(addrSbitMonReset, 0x1, la->response);
-
-        //wait for 4095 clock cycles then read L1A delay
-        std::this_thread::sleep_for (std::chrono::nanoseconds(4095*25));
-        l1ADelay = readRawAddress(addrSbitL1ADelay, la->response);
-        if (l1ADelay > 4095) { //Anything larger than this consider as overflow
-            l1ADelay = 4095; //(0xFFF in hex)
-        }
-
-        //get sbits
+        // get s-bits
         bool anyValid=false;
-        std::vector<uint32_t> tempSBits; //will only be stored into storedSbits if anyValid is true
-        for (int cluster=0; cluster<nclusters; ++cluster) {
-            //bits [10:0] is the address of the cluster
-            //bits [14:12] is the cluster size
-            //bits 15 and 11 are not used
-            uint32_t thisCluster = readRawAddress(addrSbitCluster[cluster], la->response);
-            uint32_t sbitAddress = (thisCluster & 0x7ff);
+        std::vector<uint32_t> tempSBits;
+        for (int cluster = 0; cluster < nclusters; ++cluster) {
+            uint32_t thisCluster = utils::readRawAddress(addrSbitCluster[cluster]);
+            uint32_t sbitAddr = (thisCluster & 0x7ff);
             int clusterSize = (thisCluster >> 12) & 0x7;
-            bool isValid = (sbitAddress < 1536); //Possible values are [0,(24*64)-1]
+            bool isValid = (sbitAddr < ((24*64)-1));
 
             if (isValid) {
-                LOGGER->log_message(LogManager::INFO,stdsprintf("valid sbit data: thisClstr %x; sbitAddr %x;",thisCluster,sbitAddress));
-                anyValid=true;
+                LOG4CPLUS_INFO(logger, "valid sbit data: "
+                               << "this cluster 0x" << std::hex << std::setw(8) << std::setfill('0') << thisCluster << std::dec
+                               << ", s-bit addr 0x" << std::hex << std::setw(8) << std::setfill('0') << sbitAddr    << std::dec);
+                anyValid = true;
             }
 
-            //Store the sbit
-            tempSBits.push_back( ((l1ADelay & 0x1fff) << 14) + ((clusterSize & 0x7) << 11) + (sbitAddress & 0x7ff) );
-        } //End Loop over clusters
+            // Store the sbit
+            tempSBits.push_back( ((l1ADelay & 0x1fff) << 14) + ((clusterSize & 0x7) << 11) + (sbitAddr & 0x7ff) );
+        }
 
         if (anyValid) {
             storedSbits.insert(storedSbits.end(),tempSBits.begin(),tempSBits.end());
         }
 
-        acquisitionTime=difftime(time(NULL),startTime);
-        if (uint32_t(acquisitionTime) > acquireTime) {
+        acquisitionTime = difftime(time(nullptr), startTime);
+        if (static_cast<uint32_t>(acquisitionTime) > acquireTime) {
             acquire=false;
         }
-    } //End readout sbits
+    }
 
     return storedSbits;
-} //End sbitReadOutLocal(...)
+}
 
-void sbitReadOut(const RPCMsg *request, RPCMsg *response)
+std::map<std::string, uint32_t> amc::repeatedRegRead::operator()(const std::vector<std::string> &regList, const bool &breakOnFailure, const uint32_t &nReads) const
 {
-    GETLOCALARGS(response);
-
-    uint32_t ohN = request->get_word("ohN");
-    uint32_t acquireTime = request->get_word("acquireTime");
-
-    bool maxNetworkSizeReached = false;
-
-    time_t startTime=time(NULL);
-    std::vector<uint32_t> storedSbits = sbitReadOutLocal(&la, ohN, acquireTime, &maxNetworkSizeReached);
-    time_t approxLivetime=difftime(time(NULL),startTime);
-
-    if (maxNetworkSizeReached) {
-        response->set_word("maxNetworkSizeReached", maxNetworkSizeReached);
-        response->set_word("approxLiveTime",approxLivetime);
+    utils::SlowCtrlErrCntVFAT vfatErrs;
+    for (auto const & regIter : regList) {
+      LOG4CPLUS_INFO(logger, "Attempting to repeatedly read register " << regIter << " for " << nReads << " times");
+      vfatErrs = vfatErrs + utils::repeatedRegRead(regIter, breakOnFailure, nReads);
     }
-    response->set_word_array("storedSbits",storedSbits);
 
-    rtxn.abort();
-} //End sbitReadOut()
+    std::map<std::string, uint32_t> vfatErrors;
+    vfatErrors["CRC_ERROR_CNT"]         = vfatErrs.crc;
+    vfatErrors["PACKET_ERROR_CNT"]      = vfatErrs.packet;
+    vfatErrors["BITSTUFFING_ERROR_CNT"] = vfatErrs.bitstuffing;
+    vfatErrors["TIMEOUT_ERROR_CNT"]     = vfatErrs.timeout;
+    vfatErrors["AXI_STROBE_ERROR_CNT"]  = vfatErrs.axi_strobe;
+    vfatErrors["SUM"]                   = vfatErrs.sum;
+    vfatErrors["TRANSACTION_CNT"]       = vfatErrs.nTransactions;
+
+    return vfatErrors;
+}
 
 extern "C" {
     const char *module_version_key = "amc v1.0.1";
-    int module_activity_color = 4;
-    void module_init(ModuleManager *modmgr) {
-        initLogging();
+    const int module_activity_color = 4;
+
+    void module_init(ModuleManager *modmgr)
+    {
+        utils::initLogging();
 
         if (memhub_open(&memsvc) != 0) {
             auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("main"));
             LOG4CPLUS_ERROR(logger, LOG4CPLUS_TEXT("Unable to connect to memory service: ") << memsvc_get_last_error(memsvc));
             LOG4CPLUS_ERROR(logger, "Unable to load module");
-            return; // Do not register our functions, we depend on memsvc.
+            return;
         }
 
-        modmgr->register_method("amc", "getOHVFATMask",          getOHVFATMask);
-        modmgr->register_method("amc", "getOHVFATMaskMultiLink", getOHVFATMaskMultiLink);
-        modmgr->register_method("amc", "repeatedRegRead",        repeatedRegRead);
-        modmgr->register_method("amc", "sbitReadOut",            sbitReadOut);
+        xhal::common::rpc::registerMethod<amc::getOHVFATMask>(modmgr);
+        xhal::common::rpc::registerMethod<amc::getOHVFATMaskMultiLink>(modmgr);
+        xhal::common::rpc::registerMethod<amc::sbitReadOut>(modmgr);
+        xhal::common::rpc::registerMethod<amc::repeatedRegRead>(modmgr);
 
         // DAQ module methods (from amc/daq)
-        modmgr->register_method("amc", "enableDAQLink",           enableDAQLink);
-        modmgr->register_method("amc", "disableDAQLink",          disableDAQLink);
-        modmgr->register_method("amc", "setZS",                   setZS);
-        modmgr->register_method("amc", "resetDAQLink",            resetDAQLink);
-        modmgr->register_method("amc", "setDAQLinkInputTimeout",  setDAQLinkInputTimeout);
-        modmgr->register_method("amc", "setDAQLinkRunType",       setDAQLinkRunType);
-        modmgr->register_method("amc", "setDAQLinkRunParameter",  setDAQLinkRunParameter);
-        modmgr->register_method("amc", "setDAQLinkRunParameters", setDAQLinkRunParameters);
-
-        modmgr->register_method("amc", "configureDAQModule",   configureDAQModule);
-        modmgr->register_method("amc", "enableDAQModule",      enableDAQModule);
+        xhal::common::rpc::registerMethod<amc::daq::enableDAQLink>(modmgr);
+        xhal::common::rpc::registerMethod<amc::daq::disableDAQLink>(modmgr);
+        xhal::common::rpc::registerMethod<amc::daq::setZS>(modmgr);
+        xhal::common::rpc::registerMethod<amc::daq::resetDAQLink>(modmgr);
+        xhal::common::rpc::registerMethod<amc::daq::setDAQLinkInputTimeout>(modmgr);
+        xhal::common::rpc::registerMethod<amc::daq::setDAQLinkRunType>(modmgr);
+        xhal::common::rpc::registerMethod<amc::daq::setDAQLinkRunParameter>(modmgr);
+        xhal::common::rpc::registerMethod<amc::daq::setDAQLinkRunParameters>(modmgr);
+        xhal::common::rpc::registerMethod<amc::daq::configureDAQModule>(modmgr);
+        xhal::common::rpc::registerMethod<amc::daq::enableDAQModule>(modmgr);
 
         // TTC module methods (from amc/ttc)
-        modmgr->register_method("amc", "ttcModuleReset",     ttcModuleReset);
-        modmgr->register_method("amc", "ttcMMCMReset",       ttcMMCMReset);
-        modmgr->register_method("amc", "ttcMMCMPhaseShift",  ttcMMCMPhaseShift);
-        modmgr->register_method("amc", "checkPLLLock",       checkPLLLock);
-        modmgr->register_method("amc", "getMMCMPhaseMean",   getMMCMPhaseMean);
-        modmgr->register_method("amc", "getMMCMPhaseMedian", getMMCMPhaseMedian);
-        modmgr->register_method("amc", "getGTHPhaseMean",    getGTHPhaseMean);
-        modmgr->register_method("amc", "getGTHPhaseMedian",  getGTHPhaseMedian);
-        modmgr->register_method("amc", "ttcCounterReset",    ttcCounterReset);
-        modmgr->register_method("amc", "getL1AEnable",       getL1AEnable);
-        modmgr->register_method("amc", "setL1AEnable",       setL1AEnable);
-        modmgr->register_method("amc", "getTTCConfig",       getTTCConfig);
-        modmgr->register_method("amc", "setTTCConfig",       setTTCConfig);
-        modmgr->register_method("amc", "getTTCStatus",       getTTCStatus);
-        modmgr->register_method("amc", "getTTCErrorCount",   getTTCErrorCount);
-        modmgr->register_method("amc", "getTTCCounter",      getTTCCounter);
-        modmgr->register_method("amc", "getL1AID",           getL1AID);
-        modmgr->register_method("amc", "getL1ARate",         getL1ARate);
-        modmgr->register_method("amc", "getTTCSpyBuffer",    getTTCSpyBuffer);
+        xhal::common::rpc::registerMethod<amc::ttc::ttcModuleReset>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::ttcMMCMReset>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::ttcMMCMPhaseShift>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::checkPLLLock>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::getMMCMPhaseMean>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::getMMCMPhaseMedian>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::getGTHPhaseMean>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::getGTHPhaseMedian>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::ttcCounterReset>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::getL1AEnable>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::setL1AEnable>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::getTTCConfig>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::setTTCConfig>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::getTTCStatus>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::getTTCErrorCount>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::getTTCCounter>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::getL1AID>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::getL1ARate>(modmgr);
+        xhal::common::rpc::registerMethod<amc::ttc::getTTCSpyBuffer>(modmgr);
 
         // SCA module methods (from amc/sca)
-        // modmgr->register_method("amc", "scaHardResetEnable", scaHardResetEnable);
-        modmgr->register_method("amc", "readSCAADCSensor", readSCAADCSensor);
-        modmgr->register_method("amc", "readSCAADCTemperatureSensors", readSCAADCTemperatureSensors);
-        modmgr->register_method("amc", "readSCAADCVoltageSensors", readSCAADCVoltageSensors);
-        modmgr->register_method("amc", "readSCAADCSignalStrengthSensors", readSCAADCSignalStrengthSensors);
-        modmgr->register_method("amc", "readAllSCAADCSensors", readAllSCAADCSensors);
+        xhal::common::rpc::registerMethod<amc::sca::scaHardResetEnable>(modmgr);
+        xhal::common::rpc::registerMethod<amc::sca::readSCAADCSensor>(modmgr);
+        xhal::common::rpc::registerMethod<amc::sca::readSCAADCTemperatureSensors>(modmgr);
+        xhal::common::rpc::registerMethod<amc::sca::readSCAADCVoltageSensors>(modmgr);
+        xhal::common::rpc::registerMethod<amc::sca::readSCAADCSignalStrengthSensors>(modmgr);
+        xhal::common::rpc::registerMethod<amc::sca::readAllSCAADCSensors>(modmgr);
 
         // BLASTER RAM module methods (from amc/blaster_ram)
-        modmgr->register_method("amc", "writeConfRAM", writeConfRAM);
-        modmgr->register_method("amc", "readConfRAM",  readConfRAM);
+        xhal::common::rpc::registerMethod<amc::blaster::writeConfRAM>(modmgr);
+        xhal::common::rpc::registerMethod<amc::blaster::readConfRAM>(modmgr);
     }
 }

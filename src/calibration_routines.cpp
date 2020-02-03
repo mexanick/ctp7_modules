@@ -1,1402 +1,1129 @@
-#include "calibration_routines.h"
+#include "ctp7_modules/common/calibration_routines.h"
+#include "ctp7_modules/server/calibration_routines.h"
+#include "ctp7_modules/common/calibration_enums.h"
+#include "ctp7_modules/common/amc.h"
+#include "ctp7_modules/server/amc.h"
+#include "ctp7_modules/common/optohybrid.h"
+#include "ctp7_modules/common/utils.h"
+#include "ctp7_modules/server/utils.h"
+#include "ctp7_modules/common/vfat3.h"
+#include "ctp7_modules/common/hw_constants.h"
 
-#include "amc.h"
-#include "optohybrid.h"
-#include "utils.h"
-#include "vfat3.h"
+#include "xhal/common/rpc/register.h"
 
-#include <algorithm>
 #include <chrono>
 #include <math.h>
-#include <pthread.h>
 #include <thread>
-#include "hw_constants.h"
 
-std::unordered_map<uint32_t, uint32_t> setSingleChanMask(unsigned int ohN, unsigned int vfatN, unsigned int ch, localArgs *la)
-{
-    char regBuf[200];
-    std::unordered_map<uint32_t, uint32_t> map_chanOrigMask; //key -> reg addr; val -> reg value
-    uint32_t chanMaskAddr;
-    for (unsigned int chan=0; chan<128; ++chan) { //Loop Over All Channels
-        uint32_t chMask = 1;
-        if ( ch == chan) { //Do not mask the channel of interest
-            chMask = 0;
-        }
-        //store the original channel mask
-        sprintf(regBuf, "GEM_AMC.OH.OH%i.GEB.VFAT%i.VFAT_CHANNELS.CHANNEL%i.MASK",ohN,vfatN,chan);
-        chanMaskAddr=getAddress(la, regBuf);
-        map_chanOrigMask[chanMaskAddr]=readReg(la, regBuf);
-
-        //write the new channel mask
-        writeRawAddress(chanMaskAddr, chMask, la->response);
-    } //End Loop Over all Channels
-    return map_chanOrigMask;
+namespace calibration {
+  auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("logger"));
 }
 
-void applyChanMask(std::unordered_map<uint32_t, uint32_t> map_chanOrigMask, localArgs *la)
+std::unordered_map<uint32_t, uint32_t> setSingleChanMask(const uint16_t ohN, const uint8_t vfatN, const uint8_t ch)
 {
-    for (auto chanPtr = map_chanOrigMask.begin(); chanPtr != map_chanOrigMask.end(); ++chanPtr) {
-        writeRawAddress( (*chanPtr).first, (*chanPtr).second, la->response);
+  std::unordered_map<uint32_t, uint32_t> map_chanOrigMask;
+  uint32_t chanMaskAddr;
+  const std::string regBase = "GEM_AMC.OH.OH" + std::to_string(ohN) + ".GEB.VFAT" + std::to_string(vfatN) + ".VFAT_CHANNELS.CHANNEL";
+  for (size_t chan = 0; chan < 128; ++chan) {
+    uint32_t chMask = 1;
+    if (ch == chan) {
+      chMask = 0;
     }
+    const std::string regName = regBase + std::to_string(chan) + ".MASK";
+    chanMaskAddr = utils::getAddress(regName);
+    map_chanOrigMask[chanMaskAddr] = utils::readReg(regName);
+    utils::writeRawAddress(chanMaskAddr, chMask);
+  }
+  return map_chanOrigMask;
 }
 
-bool confCalPulseLocal(localArgs *la, uint32_t ohN, uint32_t mask, uint32_t ch, bool toggleOn, bool currentPulse, uint32_t calScaleFactor)
+void applyChanMask(std::unordered_map<uint32_t, uint32_t> chMasks)
 {
-    //Determine the inverse of the vfatmask
-    uint32_t notmask = ~mask & 0xFFFFFF;
-
-    char regBuf[200];
-    if (ch >= 128 && toggleOn == true) { //Case: Bad Config, asked for OR of all channels
-        la->response->set_string("error","confCalPulseLocal(): I was told to calpulse all channels which doesn't make sense");
-        return false;
-    } //End Case: Bad Config, asked for OR of all channels
-    else if (ch == 128 && toggleOn == false) { //Case: Turn cal pusle off for all channels
-        for (unsigned int vfatN = 0; vfatN < oh::VFATS_PER_OH; vfatN++) { //Loop over all VFATs
-            if ((notmask >> vfatN) & 0x1) { //End VFAT is not masked
-                for (unsigned int chan=0; chan < 128; ++chan) { //Loop Over all Channels
-                    sprintf(regBuf,"GEM_AMC.OH.OH%i.GEB.VFAT%i.VFAT_CHANNELS.CHANNEL%i.CALPULSE_ENABLE", ohN, vfatN, chan);
-                    writeReg(la, regBuf, 0x0);
-                } //End Loop Over all Channels
-                writeReg(la, stdsprintf("GEM_AMC.OH.OH%i.GEB.VFAT%i.CFG_CAL_MODE", ohN, vfatN), 0x0);
-            } //End VFAT is not masked
-        } //End Loop over all VFATs
-    } //End Case: Turn cal pulse off for all channels
-    else if (ch >= 128) { //Case: Bad Config, asked for OR of all channels
-        la->response->set_string("error","confCalPulseLocal(): I was told to calpulse (on/off) channels > 128.");
-        return false;
-    } //End Case: Bad Config, asked for OR of all channels
-    else{ //Case: Pulse a specific channel
-        for (unsigned int vfatN = 0; vfatN < oh::VFATS_PER_OH; vfatN++) { //Loop over all VFATs
-            if ((notmask >> vfatN) & 0x1) { //End VFAT is not masked
-                sprintf(regBuf,"GEM_AMC.OH.OH%i.GEB.VFAT%i.VFAT_CHANNELS.CHANNEL%i.CALPULSE_ENABLE", ohN, vfatN, ch);
-                if (toggleOn == true) { //Case: turn calpulse on
-                    writeReg(la, regBuf, 0x1);
-                    if (currentPulse) { //Case: cal mode current injection
-                        writeReg(la, stdsprintf("GEM_AMC.OH.OH%i.GEB.VFAT%i.CFG_CAL_MODE", ohN, vfatN), 0x2);
-
-                        //Set cal current pulse scale factor. Q = CAL DUR[s] * CAL DAC * 10nA * CAL FS[%] (00 = 25%, 01 = 50%, 10 = 75%, 11 = 100%)
-                        writeReg(la, stdsprintf("GEM_AMC.OH.OH%i.GEB.VFAT%i.CFG_CAL_FS", ohN, vfatN), calScaleFactor);
-                        writeReg(la, stdsprintf("GEM_AMC.OH.OH%i.GEB.VFAT%i.CFG_CAL_DUR", ohN, vfatN), 0x0);
-                    } //End Case: cal mode current injection
-                    else { //Case: cal mode voltage injection
-                        writeReg(la, stdsprintf("GEM_AMC.OH.OH%i.GEB.VFAT%i.CFG_CAL_MODE", ohN, vfatN), 0x1);
-                    } //Case: cal mode voltage injection
-                } //End Case: Turn calpulse on
-                else{ //Case: Turn calpulse off
-                    writeReg(la, regBuf, 0x0);
-                    writeReg(la, stdsprintf("GEM_AMC.OH.OH%i.GEB.VFAT%i.CFG_CAL_MODE", ohN, vfatN), 0x0);
-                } //End Case: Turn calpulse off
-            } //End VFAT is not masked
-        } //End Loop over all VFATs
-    } //End Case: Pulse a specific channel
-
-    return true;
-} //End confCalPulseLocal
-
-void dacMonConfLocal(localArgs * la, uint32_t ohN, uint32_t ch)
-{
-    //Check the firmware version
-    char regBuf[200];
-    switch (fw_version_check("dacMonConf", la)) {
-        case 3:
-        {
-            writeReg(la, "GEM_AMC.GEM_TESTS.VFAT_DAQ_MONITOR.CTRL.ENABLE", 0x0);
-            writeReg(la, "GEM_AMC.GEM_TESTS.VFAT_DAQ_MONITOR.CTRL.RESET", 0x1);
-            writeReg(la, "GEM_AMC.GEM_TESTS.VFAT_DAQ_MONITOR.CTRL.OH_SELECT", ohN);
-            if (ch>127)
-            {
-                writeReg(la, "GEM_AMC.GEM_TESTS.VFAT_DAQ_MONITOR.CTRL.VFAT_CHANNEL_GLOBAL_OR", 0x1);
-            }
-            else
-            {
-                writeReg(la, "GEM_AMC.GEM_TESTS.VFAT_DAQ_MONITOR.CTRL.VFAT_CHANNEL_SELECT", ch);
-                writeReg(la, "GEM_AMC.GEM_TESTS.VFAT_DAQ_MONITOR.CTRL.VFAT_CHANNEL_GLOBAL_OR", 0x0);
-            }
-            break;
-        }// end v3 electronics behavior
-        default:
-        {
-            LOGGER->log_message(LogManager::ERROR, "dacMonConf is only supported in V3 electronics");
-            sprintf(regBuf,"dacMonConf is only supported in V3 electronics");
-            la->response->set_string("error",regBuf);
-            break;
-        }
-    }
-    return;
+  for (auto const& chMask : chMasks) {
+    utils::writeRawAddress(chMask.first, chMask.second);
+  }
 }
 
-void ttcGenToggleLocal(localArgs * la, uint32_t ohN, bool enable)
+void calibration::confCalPulse::operator()(const uint16_t &ohN,
+                                           const uint32_t &vfatMask,
+                                           const uint8_t &ch,
+                                           const bool &toggleOn,
+                                           const bool &currentPulse,
+                                           const uint32_t &calScaleFactor) const
 {
-    //Check firmware version
-    switch(fw_version_check("ttcGenToggle", la)) {
-        case 3: //v3 electronics behavior
-        {
-            if (enable) {
-                writeReg(la, "GEM_AMC.TTC.GENERATOR.ENABLE", 0x1); //Internal TTC generator enabled, TTC cmds from backplane are ignored
-            }
-            else{
-                writeReg(la, "GEM_AMC.TTC.GENERATOR.ENABLE", 0x0); //Internal TTC generator disabled, TTC cmds from backplane
-            }
-            break;
-        }//End v3 electronics behavior
-        case 1: //v2b electronics behavior
-        {
-            //base reg
-            std::stringstream sstream;
-            sstream<<ohN;
-            std::string contBase = "GEM_AMC.OH.OH" + sstream.str() + ".T1Controller";
+  const uint32_t notmask = (~vfatMask)&0xffffff;
 
-            if (enable) { //Start
-                if ( !(readReg(la, contBase + ".MONITOR"))) {
-                    writeReg(la, contBase + ".TOGGLE", 0x1);   //Enable
-                }
-            }
-            else { //Stop
-                if ( readReg(la, contBase + ".MONITOR")) {
-                    writeReg(la, contBase + ".TOGGLE", 0x0);   //Disable
-                }
-            }
-            break;
-        }//End v2b electronics behavior
-        default:
-        {
-            LOGGER->log_message(LogManager::ERROR, "Unexpected value for system release major, do nothing");
-            break;
+  if (ch >= 128) {
+    std::stringstream errmsg;
+    errmsg << "Invalid channel selection: " << ch << " > 128";
+    LOG4CPLUS_ERROR(logger, errmsg.str());
+    throw std::runtime_error(errmsg.str());
+  } else if (ch >= 128 && toggleOn == true) {
+    std::stringstream errmsg;
+    errmsg << "Enabling a calibration pulse to all channels can result in undefined behaviour";
+    LOG4CPLUS_ERROR(logger, errmsg.str());
+    throw std::runtime_error(errmsg.str());
+  } else if (ch == 128 && toggleOn == false) {
+    for (size_t vfatN = 0; vfatN < oh::VFATS_PER_OH; ++vfatN) {
+      const std::string regBase = "GEM_AMC.OH.OH" + std::to_string(ohN) + ".GEB.VFAT" + std::to_string(vfatN);
+      if ((notmask >> vfatN) & 0x1) {
+        for (size_t chan = 0; chan < 128; ++chan) {
+          utils::writeReg(regBase + ".VFAT_CHANNELS.CHANNEL" + std::to_string(chan) + ".CALPULSE_ENABLE", 0x0);
         }
+        utils::writeReg(regBase + ".CFG_CAL_MODE", static_cast<uint32_t>(VFATCalibrationMode::DISABLED));
+      }
     }
-    return;
-} //End ttcGenToggleLocal(...)
-
-void ttcGenToggle(const RPCMsg *request, RPCMsg *response)
-{
-    GETLOCALARGS(response);
-
-    uint32_t ohN = request->get_word("ohN");
-    bool enable = request->get_word("enable");
-
-    ttcGenToggleLocal(&la, ohN, enable);
-    rtxn.abort();
-} //End ttcGenToggle(...)
-
-void ttcGenConfLocal(localArgs * la, uint32_t ohN, uint32_t mode, uint32_t type, uint32_t pulseDelay, uint32_t L1Ainterval, uint32_t nPulses, bool enable)
-{
-    //Check firmware version
-    LOGGER->log_message(LogManager::INFO, "Entering ttcGenConfLocal");
-    switch(fw_version_check("ttcGenConf", la)) {
-        case 0x3: //v3 electronics behavior
-        {
-            LOGGER->log_message(LogManager::INFO, "ttcGenConfLocal: V3 behavior");
-            writeReg(la, "GEM_AMC.TTC.GENERATOR.RESET", 0x1);
-            writeReg(la, "GEM_AMC.TTC.GENERATOR.CYCLIC_L1A_GAP", L1Ainterval);
-            writeReg(la, "GEM_AMC.TTC.GENERATOR.CYCLIC_CALPULSE_TO_L1A_GAP", pulseDelay);
-            break;
-        }//End v3 electronics behavior
-        case 0x1: //v2b electronics behavior
-        {
-            //base reg
-            std::stringstream sstream;
-            sstream<<ohN;
-            std::string contBase = "GEM_AMC.OH.OH" + sstream.str() + ".T1Controller";
-
-            //reset the controller
-            writeReg(la, contBase + ".RESET",0x1);
-
-            //Set the mode
-            writeReg(la, contBase + ".MODE",mode);
-            LOGGER->log_message(LogManager::DEBUG, stdsprintf("OH%i : Configuring T1 Controller for mode 0x%x (0x%x)",
-                        ohN,mode,
-                        readReg(la, contBase + ".MODE")
-                        )
-                    );
-
-            if (mode == 0) {
-                writeReg(la, contBase + ".TYPE", type);
-                LOGGER->log_message(LogManager::DEBUG, stdsprintf("OH%i : Configuring T1 Controller for type 0x%x (0x%x)",
-                            ohN,type,
-                            readReg(la, contBase + ".TYPE")
-                            )
-                        );
-            }
-            if (mode == 1) {
-                writeReg(la, contBase + ".DELAY", pulseDelay);
-                LOGGER->log_message(LogManager::DEBUG, stdsprintf("OH%i : Configuring T1 Controller for delay %i (%i)",
-                            ohN,pulseDelay,
-                            readReg(la, contBase + ".DELAY")
-                            )
-                        );
-            }
-            if (mode != 2) {
-                writeReg(la, contBase + ".INTERVAL", L1Ainterval);
-                LOGGER->log_message(LogManager::DEBUG, stdsprintf("OH%i : Configuring T1 Controller for interval %i (%i)",
-                            ohN,L1Ainterval,
-                            readReg(la, contBase + ".INTERVAL")
-                            )
-                        );
-            }
-
-            writeReg(la, contBase + ".NUMBER", nPulses);
-            LOGGER->log_message(LogManager::DEBUG, stdsprintf("OH%i : Configuring T1 Controller for nsignals %i (%i)",
-                        ohN,nPulses,
-                        readReg(la, contBase + ".NUMBER")
-                        )
-                    );
-            break;
-        }//End v2b electronics behavior
-        default:
-        {
-            LOGGER->log_message(LogManager::ERROR, "Unexpected value for system release major, do nothing");
-            break;
+  } else {
+    for (size_t vfatN = 0; vfatN < oh::VFATS_PER_OH; ++vfatN) {
+      if ((notmask >> vfatN) & 0x1) {
+        const std::string regBase = "GEM_AMC.OH.OH" + std::to_string(ohN) + ".GEB.VFAT" + std::to_string(vfatN);
+        if (toggleOn == true) {
+          utils::writeReg(regBase + ".VFAT_CHANNELS.CHANNEL" + std::to_string(ch) + ".CALPULSE_ENABLE", 0x1);
+          if (currentPulse) {
+            utils::writeReg(regBase + ".CFG_CAL_MODE", static_cast<uint32_t>(VFATCalibrationMode::CURRENT));
+            // Set cal current pulse scale factor.
+            // Q = CAL DUR[s] * CAL DAC * 10nA * CAL FS[%] (00 = 25%, 01 = 50%, 10 = 75%, 11 = 100%)
+            utils::writeReg(regBase + ".CFG_CAL_FS", calScaleFactor);
+            utils::writeReg(regBase + ".CFG_CAL_DUR", 0x0);
+          } else {
+            utils::writeReg(regBase + ".CFG_CAL_MODE", static_cast<uint32_t>(VFATCalibrationMode::VOLTAGE));
+          }
+        } else {
+          utils::writeReg(regBase + ".VFAT_CHANNELS.CHANNEL" + std::to_string(ch) + ".CALPULSE_ENABLE", 0x0);
+          utils::writeReg(regBase + ".CFG_CAL_MODE", static_cast<uint32_t>(VFATCalibrationMode::DISABLED));
         }
+      }
     }
-    //start or stop
-    LOGGER->log_message(LogManager::INFO, "ttcGenConfLocal: call ttcGenToggleLocal");
-    ttcGenToggleLocal(la, ohN, enable);
-    return;
+  }
+
+  return;
 }
 
-void ttcGenConf(const RPCMsg *request, RPCMsg *response)
+void calibration::dacMonConf::operator()(const uint16_t &ohN, const uint8_t &ch) const
 {
-    LOGGER->log_message(LogManager::INFO, "Entering ttcGenConf");
-    GETLOCALARGS(response);
-
-    uint32_t ohN = request->get_word("ohN");
-    uint32_t mode = request->get_word("mode");
-    uint32_t type = request->get_word("type");
-    uint32_t pulseDelay = request->get_word("pulseDelay");
-    uint32_t L1Ainterval = request->get_word("L1Ainterval");
-    uint32_t nPulses = request->get_word("nPulses");
-    bool enable = request->get_word("enable");
-
-    LOGGER->log_message(LogManager::INFO, stdsprintf("Calling ttcGenConfLocal with ohN : %i, mode : %i, type : %i, pulse delay : %i, L1A interval : %i, number of pulses : %i", ohN,mode,type,pulseDelay,L1Ainterval,nPulses));
-    ttcGenConfLocal(&la, ohN, mode, type, pulseDelay, L1Ainterval, nPulses, enable);
-
-    rtxn.abort();
+  switch (amc::fw_version_check("dacMonConf")) {
+  case 3:
+    utils::writeReg("GEM_AMC.GEM_TESTS.VFAT_DAQ_MONITOR.CTRL.ENABLE", 0x0);
+    utils::writeReg("GEM_AMC.GEM_TESTS.VFAT_DAQ_MONITOR.CTRL.RESET", 0x1);
+    utils::writeReg("GEM_AMC.GEM_TESTS.VFAT_DAQ_MONITOR.CTRL.OH_SELECT", ohN);
+    if (ch>127) {
+      utils::writeReg("GEM_AMC.GEM_TESTS.VFAT_DAQ_MONITOR.CTRL.VFAT_CHANNEL_GLOBAL_OR", 0x1);
+    } else {
+      utils::writeReg("GEM_AMC.GEM_TESTS.VFAT_DAQ_MONITOR.CTRL.VFAT_CHANNEL_SELECT", ch);
+      utils::writeReg("GEM_AMC.GEM_TESTS.VFAT_DAQ_MONITOR.CTRL.VFAT_CHANNEL_GLOBAL_OR", 0x0);
+    }
+    break;
+  default:
+    const std::string errmsg = "dacMonConf is only supported in V3 electronics";
+    LOG4CPLUS_ERROR(logger, errmsg);
+    throw std::runtime_error(errmsg);
+  }
+  return;
 }
 
-void genScanLocal(localArgs *la, uint32_t *outData, uint32_t ohN, uint32_t mask, uint32_t ch, bool useCalPulse, bool currentPulse, uint32_t calScaleFactor, uint32_t nevts, uint32_t dacMin, uint32_t dacMax, uint32_t dacStep, std::string scanReg, bool useUltra, bool useExtTrig)
+void calibration::ttcGenToggle::operator()(const uint16_t &ohN, const bool &enable) const
 {
-    //Determine the inverse of the vfatmask
-    uint32_t notmask = ~mask & 0xFFFFFF;
-
-    //Check firmware version
-    switch(fw_version_check("genScanLocal", la)) {
-        case 3: //v3 electronics behavior
-        {
-            uint32_t goodVFATs = vfatSyncCheckLocal(la, ohN);
-            char regBuf[200];
-            if ( (notmask & goodVFATs) != notmask)
-            {
-                sprintf(regBuf,"One of the unmasked VFATs is not Synced. goodVFATs: %x\tnotmask: %x",goodVFATs,notmask);
-                la->response->set_string("error",regBuf);
-                return;
-            }
-
-            if (currentPulse && calScaleFactor > 3) {
-                sprintf(regBuf,"Bad value for CFG_CAL_FS: %x, Possible values are {0b00, 0b01, 0b10, 0b11}. Exiting.",calScaleFactor);
-                la->response->set_string("error",regBuf);
-                return;
-            }
-
-            //Do we turn on the calpulse for the channel = ch?
-            if (useCalPulse) {
-                if (confCalPulseLocal(la, ohN, mask, ch, true, currentPulse, calScaleFactor) == false) {
-                    la->response->set_string("error",stdsprintf("Unable to configure calpulse ON for ohN %i mask %x chan %i", ohN, mask, ch));
-                    return; //Calibration pulse is not configured correctly
-                }
-            } //End use calibration pulse
-
-            //Get addresses
-            uint32_t daqMonAddr[oh::VFATS_PER_OH];
-            uint32_t l1CntAddr = getAddress(la, "GEM_AMC.TTC.CMD_COUNTERS.L1A");
-            for (unsigned int vfatN = 0; vfatN < oh::VFATS_PER_OH; vfatN++)
-            {
-                sprintf(regBuf,"GEM_AMC.GEM_TESTS.VFAT_DAQ_MONITOR.VFAT%i.GOOD_EVENTS_COUNT",vfatN);
-                daqMonAddr[vfatN] = getAddress(la, regBuf);
-            }
-
-            //TTC Config
-            if (useExtTrig) {
-                writeReg(la, "GEM_AMC.TTC.CTRL.L1A_ENABLE", 0x0);
-                writeReg(la, "GEM_AMC.TTC.CTRL.CNT_RESET", 0x1);
-            }
-            else{
-                writeReg(la, "GEM_AMC.TTC.GENERATOR.CYCLIC_L1A_COUNT", nevts);
-                writeReg(la, "GEM_AMC.TTC.GENERATOR.SINGLE_RESYNC", 0x1);
-            }
-
-            //Configure VFAT_DAQ_MONITOR
-            dacMonConfLocal(la, ohN, ch);
-
-            //Scan over DAC values
-            for (uint32_t dacVal = dacMin; dacVal <= dacMax; dacVal += dacStep)
-            {
-                //Write the scan reg value
-                for (unsigned int vfatN = 0; vfatN < oh::VFATS_PER_OH; vfatN++) if ((notmask >> vfatN) & 0x1)
-                {
-                    writeReg(la, stdsprintf("GEM_AMC.OH.OH%i.GEB.VFAT%i.CFG_%s",ohN,vfatN,scanReg.c_str()), dacVal);
-                }
-
-                //Reset and enable the VFAT_DAQ_MONITOR
-                writeReg(la, "GEM_AMC.GEM_TESTS.VFAT_DAQ_MONITOR.CTRL.RESET", 0x1);
-                writeReg(la, "GEM_AMC.GEM_TESTS.VFAT_DAQ_MONITOR.CTRL.ENABLE", 0x1);
-
-                //Start the triggers
-                if (useExtTrig) {
-                    writeReg(la, "GEM_AMC.TTC.CTRL.CNT_RESET", 0x1);
-                    writeReg(la, "GEM_AMC.TTC.CTRL.L1A_ENABLE", 0x1);
-
-                    uint32_t l1aCnt = 0;
-                    while(l1aCnt < nevts) {
-                        l1aCnt = readRawAddress(l1CntAddr, la->response);
-                        std::this_thread::sleep_for(std::chrono::microseconds(200));
-                    }
-
-                    writeReg(la, "GEM_AMC.TTC.CTRL.L1A_ENABLE", 0x0);
-                    l1aCnt = readRawAddress(l1CntAddr, la->response);
-                }
-                else{
-                    writeReg(la, "GEM_AMC.TTC.GENERATOR.CYCLIC_START", 0x1);
-                    if (readReg(la, "GEM_AMC.TTC.GENERATOR.ENABLE")) { //TTC Commands from TTC.GENERATOR
-                        while(readReg(la, "GEM_AMC.TTC.GENERATOR.CYCLIC_RUNNING")) {
-                            std::this_thread::sleep_for(std::chrono::microseconds(50));
-                        }
-                    } //End TTC Commands from TTC.GENERATOR
-                }
-
-                //Stop the DAQ monitor counters from incrementing
-                writeReg(la, "GEM_AMC.GEM_TESTS.VFAT_DAQ_MONITOR.CTRL.ENABLE", 0x0);
-
-                //Read the DAQ Monitor counters
-                for (unsigned int vfatN = 0; vfatN < oh::VFATS_PER_OH; vfatN++) {
-                    if ( !( (notmask >> vfatN) & 0x1)) continue;
-
-                    unsigned int idx = vfatN*(dacMax-dacMin+1)/dacStep+(dacVal-dacMin)/dacStep;
-                    outData[idx] = readRawAddress(daqMonAddr[vfatN], la->response);
-
-                    LOGGER->log_message(LogManager::DEBUG, stdsprintf("%s Value: %i; Readback Val: %i; Nhits: %i; Nev: %i; CFG_THR_ARM: %i",
-                                 scanReg.c_str(),
-                                 dacVal,
-                                 readReg(la, stdsprintf("GEM_AMC.OH.OH%i.GEB.VFAT%i.CFG_%s",ohN,vfatN,scanReg.c_str())),
-                                 readReg(la, stdsprintf("GEM_AMC.GEM_TESTS.VFAT_DAQ_MONITOR.VFAT%i.CHANNEL_FIRE_COUNT",vfatN)),
-                                 readReg(la, stdsprintf("GEM_AMC.GEM_TESTS.VFAT_DAQ_MONITOR.VFAT%i.GOOD_EVENTS_COUNT",vfatN)),
-                                 readReg(la, stdsprintf("GEM_AMC.OH.OH%i.GEB.VFAT%i.CFG_THR_ARM_DAC",ohN,vfatN,scanReg.c_str()))
-                        )
-                    );
-                } //End Loop over vfats
-            } //End Loop from dacMin to dacMax
-
-            //If the calpulse for channel ch was turned on, turn it off
-            if (useCalPulse) {
-                if (confCalPulseLocal(la, ohN, mask, ch, false, currentPulse, calScaleFactor) == false) {
-                    la->response->set_string("error",stdsprintf("Unable to configure calpulse OFF for ohN %i mask %x chan %i", ohN, mask, ch));
-                    return; //Calibration pulse is not configured correctly
-                }
-            }
-            break;
-        }//End v3 electronics behavior
-        case 1: //v2b electronics behavior
-        {
-            //Determine scanmode
-            std::map<int, std::string> map_strKnownRegs; //Key -> scanmode; val -> register
-
-            map_strKnownRegs[0] = "VThreshold1";
-            map_strKnownRegs[1] = "VThreshold1PerChan";
-            map_strKnownRegs[2] = "Latency";
-            map_strKnownRegs[3] = "VCal";
-            map_strKnownRegs[4] = "VThreshold1Trk";
-
-            uint32_t scanmode = 1000;
-
-            for (auto knownRegIter = map_strKnownRegs.begin(); knownRegIter != map_strKnownRegs.end(); ++knownRegIter) {
-                //Comparison code goes here
-                if ( (*knownRegIter).second.compare(scanReg) == 0) {
-                    scanmode = (*knownRegIter).first;
-                    break;
-                }
-            }
-
-            //scanmode not understood
-            if (scanmode == 1000) {
-                std::string strError = "scanReg: " + scanReg + " not understood.  Supported values are:\n";
-                for (auto knownRegIter = map_strKnownRegs.begin(); knownRegIter != map_strKnownRegs.end(); ++knownRegIter) {
-                    scanReg += ((*knownRegIter).second + "\n");
-                }
-                la->response->set_string("error",strError);
-            }
-
-            //Configure scan module
-            uint32_t vfatN = 0;
-            if (!useUltra) {
-                //If we are not performing an ultraScan, take the first non-masked VFAT
-                for (unsigned int vfat=0; vfat<oh::VFATS_PER_OH; ++vfat) {
-                    if ((notmask >> vfat) & 0x1) {
-                        vfatN=vfat;
-                        break;
-                    }
-                }
-            }
-
-            configureScanModuleLocal(la, ohN, vfatN, scanmode, useUltra, mask, ch, nevts, dacMin, dacMax, dacStep);
-
-            //Print scan configuration
-            printScanConfigurationLocal(la, ohN, useUltra);
-
-            //Do we turn on the calpulse for the channel = ch?
-            uint32_t trimVal=0;
-            if (useCalPulse) {
-                if (ch >= 128) {
-                    la->response->set_string("error","It doesn't make sense to calpulse all channels");
-                    return;
-                }
-                else{
-                    for (unsigned int vfat=0; vfat<oh::VFATS_PER_OH; ++vfat) {
-                        if ( (notmask >> vfat) & 0x1) {
-                            trimVal = (0x3f & readReg(la, stdsprintf("GEM_AMC.OH.OH%i.GEB.VFATS.VFAT%i.VFATChannels.ChanReg%i",ohN,vfat,ch)));
-                            writeReg(la, stdsprintf("GEM_AMC.OH.OH%i.GEB.VFATS.VFAT%i.VFATChannels.ChanReg%i",ohN,vfat,ch),trimVal+64);
-                        }
-                    }
-                }
-            }
-
-            //Start scan configuration
-            startScanModuleLocal(la, ohN, useUltra);
-
-            //If the calpulse for channel ch was turned on, turn it off
-            if (useCalPulse) {
-                for (unsigned int vfat=0; vfat<oh::VFATS_PER_OH; ++vfat) {
-                    if ( (notmask >> vfat) & 0x1) {
-                        trimVal = (0x3f & readReg(la, stdsprintf("GEM_AMC.OH.OH%i.GEB.VFATS.VFAT%i.VFATChannels.ChanReg%i",ohN,vfat,ch)));
-                        writeReg(la, stdsprintf("GEM_AMC.OH.OH%i.GEB.VFATS.VFAT%i.VFATChannels.ChanReg%i",ohN,vfat,ch),trimVal);
-                    }
-                }
-            }
-
-            //Get scan results
-            getUltraScanResultsLocal(la, outData, ohN, nevts, dacMin, dacMax, dacStep);
-            break;
-        }//End v2b electronics behavior
-        default:
-        {
-            LOGGER->log_message(LogManager::ERROR, "Unexpected value for system release major, do nothing");
-            break;
-        }
+  switch(amc::fw_version_check("ttcGenToggle")) {
+  case 3:
+    if (enable) {
+      // Internal TTC generator enabled, TTC cmds from backplane are ignored
+      utils::writeReg("GEM_AMC.TTC.GENERATOR.ENABLE", 0x1);
+    } else {
+      // Internal TTC generator disabled, TTC cmds from backplane
+      utils::writeReg("GEM_AMC.TTC.GENERATOR.ENABLE", 0x0);
     }
-    return;
-} //End genScanLocal(...)
-
-void genScan(const RPCMsg *request, RPCMsg *response)
-{
-    GETLOCALARGS(response);
-
-    uint32_t nevts = request->get_word("nevts");
-    uint32_t ohN = request->get_word("ohN");
-    uint32_t ch = request->get_word("ch");
-    uint32_t mask = request->get_word("mask");
-    uint32_t dacMin = request->get_word("dacMin");
-    uint32_t dacMax = request->get_word("dacMax");
-    uint32_t dacStep = request->get_word("dacStep");
-    bool useCalPulse = request->get_word("useCalPulse");
-    bool currentPulse = request->get_word("currentPulse");
-    uint32_t calScaleFactor = request->get_word("calScaleFactor");
-    std::string scanReg = request->get_string("scanReg");
-
-    bool useUltra = false;
-    if (request->get_key_exists("useUltra")) {
-        useUltra = true;
-    }
-    bool useExtTrig = request->get_word("useExtTrig");
-
-    uint32_t outData[oh::VFATS_PER_OH*(dacMax-dacMin+1)/dacStep];
-    genScanLocal(&la, outData, ohN, mask, ch, useCalPulse, currentPulse, calScaleFactor, nevts, dacMin, dacMax, dacStep, scanReg, useUltra, useExtTrig);
-    response->set_word_array("data",outData,oh::VFATS_PER_OH*(dacMax-dacMin+1)/dacStep);
-
-    rtxn.abort();
+    break;
+  case 1:
+    // LOG4CPLUS_WARN(logger, "V2b electronics are not supported [[deprecated]]");
+    throw std::runtime_error("V2b electronics are not supported [[deprecated]]");
+  default:
+    LOG4CPLUS_ERROR(logger, "Unexpected value for system release major, do nothing");
+    break;
+  }
+  return;
 }
 
-void sbitRateScanLocal(localArgs *la, uint32_t *outDataDacVal, uint32_t *outDataTrigRate, uint32_t ohN, uint32_t maskOh, bool invertVFATPos, uint32_t ch, uint32_t dacMin, uint32_t dacMax, uint32_t dacStep, std::string scanReg, uint32_t waitTime)
+void calibration::ttcGenConf::operator()(const uint16_t &ohN, const uint32_t &mode, const uint32_t &type,
+                                         const uint32_t &pulseDelay, const uint32_t &L1Ainterval,
+                                         const uint32_t &nPulses, const bool &enable) const
 {
-    char regBuf[200];
-    switch (fw_version_check("SBIT Rate Scan", la)) {
-        case 3:
-        {
-            //Hard code possible maskOh values and how they map to vfatN
-            std::unordered_map<uint32_t,uint32_t> map_maskOh2vfatN;
-            map_maskOh2vfatN[0xfffffe] = 0;
-            map_maskOh2vfatN[0xfffffd] = 1;
-            map_maskOh2vfatN[0xfffffb] = 2;
-            map_maskOh2vfatN[0xfffff7] = 3;
-            map_maskOh2vfatN[0xffffef] = 4;
-            map_maskOh2vfatN[0xffffdf] = 5;
-            map_maskOh2vfatN[0xffffbf] = 6;
-            map_maskOh2vfatN[0xffff7f] = 7;
-            map_maskOh2vfatN[0xfffeff] = 8;
-            map_maskOh2vfatN[0xfffdff] = 9;
-            map_maskOh2vfatN[0xfffbff] = 10;
-            map_maskOh2vfatN[0xfff7ff] = 11;
-            map_maskOh2vfatN[0xffefff] = 12;
-            map_maskOh2vfatN[0xffdfff] = 13;
-            map_maskOh2vfatN[0xffbfff] = 14;
-            map_maskOh2vfatN[0xff7fff] = 15;
-            map_maskOh2vfatN[0xfeffff] = 16;
-            map_maskOh2vfatN[0xfdffff] = 17;
-            map_maskOh2vfatN[0xfbffff] = 18;
-            map_maskOh2vfatN[0xf7ffff] = 19;
-            map_maskOh2vfatN[0xefffff] = 20;
-            map_maskOh2vfatN[0xdfffff] = 21;
-            map_maskOh2vfatN[0xbfffff] = 22;
-            map_maskOh2vfatN[0x7fffff] = 23;
+  LOG4CPLUS_INFO(logger, "Entering ttcGenConf");
+  switch(amc::fw_version_check("ttcGenConf")) {
+  case 3:
+    LOG4CPLUS_INFO(logger, "V3 electronics behavior");
+    utils::writeReg("GEM_AMC.TTC.GENERATOR.RESET", 0x1);
+    utils::writeReg("GEM_AMC.TTC.GENERATOR.CYCLIC_L1A_GAP", L1Ainterval);
+    utils::writeReg("GEM_AMC.TTC.GENERATOR.CYCLIC_CALPULSE_TO_L1A_GAP", pulseDelay);
+    break;
+  case 1:
+    // LOG4CPLUS_WARN(logger, "V2b electronics are not supported [[deprecated]]");
+    throw std::runtime_error("V2b electronics are not supported [[deprecated]]");
+  default:
+    LOG4CPLUS_ERROR(logger, "Unexpected value for system release major, do nothing");
+    break;
+  }
 
-            //Determine vfatN based on input maskOh
-            auto vfatNptr = map_maskOh2vfatN.find(maskOh);
-            if ( vfatNptr == map_maskOh2vfatN.end() ) {
-                sprintf(regBuf,"Input maskOh: %x not recgonized. Please make sure all but one VFAT is unmasked and then try again", maskOh);
-                la->response->set_string("error",regBuf);
-                return;
-            }
-            uint32_t vfatN = (invertVFATPos) ? 23 - (*vfatNptr).second : (*vfatNptr).second;
+  ttcGenToggle{}(ohN, enable);
+  return;
+}
 
-            uint32_t goodVFATs = vfatSyncCheckLocal(la, ohN);
-            if ( !( (goodVFATs >> vfatN ) & 0x1 ) ) {
-                sprintf(regBuf,"The requested VFAT is not synced; goodVFATs: %x\t requested VFAT: %i; maskOh: %x", goodVFATs, vfatN, maskOh);
-                la->response->set_string("error",regBuf);
-                return;
-            }
+std::vector<uint32_t> calibration::genScan::operator()(const uint16_t &ohN,
+                                                       const uint32_t &vfatMask,
+                                                       const uint8_t &ch,
+                                                       const bool &useCalPulse,
+                                                       const bool &currentPulse,
+                                                       const uint32_t &calScaleFactor,
+                                                       const uint32_t &nevts,
+                                                       const uint32_t &dacMin,
+                                                       const uint32_t &dacMax,
+                                                       const uint32_t &dacStep,
+                                                       const std::string &scanReg,
+                                                       const bool &useUltra,
+                                                       const bool &useExtTrig) const
+{
+  const uint32_t notmask = (~vfatMask)&0xffffff;
 
-            //If ch!=128 store the original channel mask settings
-            //Then mask all other channels except for channel ch
-            std::unordered_map<uint32_t, uint32_t> map_chanOrigMask; //key -> reg addr; val -> reg value
-            if ( ch != 128) map_chanOrigMask = setSingleChanMask(ohN,vfatN,ch,la);
+  // std::vector<uint32_t> outData(oh::VFATS_PER_OH*(dacMax-dacMin+1)/dacStep);
+  std::vector<uint32_t> outData;
+  switch(amc::fw_version_check("genScan")) {
+  case 3: // v3 electronics behavior
+    {
+      const uint32_t goodVFATs = vfat3::vfatSyncCheck{}(ohN);
+      if ((notmask & goodVFATs) != notmask) {
+        std::stringstream errmsg;
+        errmsg << "One of the unmasked VFATs is not sync'd: "
+               << "goodVFATs: 0x" << std::hex << std::setw(8) << std::setfill('0') << goodVFATs << std::dec
+               << "\tnotmask: 0x" << std::hex << std::setw(8) << std::setfill('0') << notmask << std::dec;
+        throw std::runtime_error(errmsg.str());
+      } else if (currentPulse && calScaleFactor > 3) {
+        std::stringstream errmsg;
+        errmsg << "Bad value for CFG_CAL_FS: 0x"
+               << std::hex << calScaleFactor << std::dec
+               << ". Possible values are {0b00, 0b01, 0b10, 0b11}";
+        throw std::runtime_error(errmsg.str());
+      }
 
-            //Get the OH Rate Monitor Address
-            sprintf(regBuf,"GEM_AMC.TRIGGER.OH%i.TRIGGER_RATE",ohN);
-            uint32_t ohTrigRateAddr = getAddress(la, regBuf);
-
-            //Store the original OH VFAT Mask, and then reset it
-            sprintf(regBuf,"GEM_AMC.OH.OH%i.FPGA.TRIG.CTRL.VFAT_MASK",ohN);
-            uint32_t ohVFATMaskAddr = getAddress(la, regBuf);
-            uint32_t maskOhOrig = readRawAddress(ohVFATMaskAddr, la->response);   //We'll write this later
-            writeRawAddress(ohVFATMaskAddr, maskOh, la->response);
-
-            //Take the VFATs out of slow control only mode
-            writeReg(la, "GEM_AMC.GEM_SYSTEM.VFAT3.SC_ONLY_MODE", 0x0);
-
-            //Loop from dacMin to dacMax in steps of dacStep
-            for (uint32_t dacVal = dacMin; dacVal <= dacMax; dacVal += dacStep) {
-                sprintf(regBuf,"GEM_AMC.OH.OH%i.GEB.VFAT%i.CFG_%s",ohN,vfatN,scanReg.c_str());
-                writeReg(la, regBuf, dacVal);
-                std::this_thread::sleep_for(std::chrono::milliseconds(waitTime));
-
-                unsigned int idx = (dacVal-dacMin)/dacStep;
-                outDataDacVal[idx] = dacVal;
-                outDataTrigRate[idx] = readRawAddress(ohTrigRateAddr, la->response);
-            } //End Loop from dacMin to dacMax
-
-            //Restore the original channel masks if specific channel was requested
-            if ( ch != 128) applyChanMask(map_chanOrigMask, la);
-
-            //Restore the original maskOh
-            writeRawAddress(ohVFATMaskAddr, maskOhOrig, la->response);
-
-            break;
-        }//End v3 electronics behavior
-        default:
-        {
-            LOGGER->log_message(LogManager::ERROR, "sbitRateScan is only supported in V3 electronics");
-            sprintf(regBuf,"sbitRateScan is only supported in V3 electronics");
-            la->response->set_string("error",regBuf);
-            break;
+      if (useCalPulse) {
+        try {
+          confCalPulse{}(ohN, vfatMask, ch, true, currentPulse, calScaleFactor);
+        } catch (std::runtime_error const& e) {
+          std::stringstream errmsg;
+          errmsg << "Unable to configure CalPulse ON for ohN " << ohN
+                 << " vfatMask 0x" << std::hex <<std::setw(8) << std::setfill('0') << vfatMask << std::dec
+                 << " chanel " << ch << std::endl
+                 << ". Caught " << e.what();
+          // rethrow here or return?
+          throw std::runtime_error(errmsg.str());
         }
-    }
-    return;
-} //End sbitRateScanLocal(...)
+      }
 
-void sbitRateScanParallelLocal(localArgs *la, uint32_t *outDataDacVal, uint32_t *outDataTrigRatePerVFAT, uint32_t *outDataTrigRateOverall, uint32_t ch, uint32_t dacMin, uint32_t dacMax, uint32_t dacStep, std::string scanReg, uint32_t ohMask=0xFFF, uint32_t waitTime=1)
-{
-    char regBuf[200];
-    // Check that OH mask does not exceeds 0xFFF
-    if (ohMask > 0xFFF) {
-         LOGGER->log_message(LogManager::ERROR, "sbitRateScan supports only up to 12 optohybrids per CTP7");
-         sprintf(regBuf,"sbitRateScan supports only up to 12 optohybrids per CTP7");
-         la->response->set_string("error",regBuf);
-         return;
-    }
-    uint32_t vfatmask[amc::OH_PER_AMC] = {0};
-    std::unordered_map<uint32_t, uint32_t> origVFATmasks[amc::OH_PER_AMC][oh::VFATS_PER_OH];
-    switch (fw_version_check("SBIT Rate Scan", la)){
-        case 3:
-        {
-            // Loop over ohMask and retrieve VFAT masks
-            for (unsigned int ohN = 0; ohN < amc::OH_PER_AMC; ++ohN)
-            {
-                if ((ohMask >> ohN) & 0x1)
-                {
-                    vfatmask[ohN] = getOHVFATMaskLocal(la, ohN);
-                    LOGGER->log_message(LogManager::INFO, stdsprintf("VFAT Mask for OH%i Determined to be 0x%x",ohN,vfatmask[ohN]));
+      uint32_t daqMonAddr[oh::VFATS_PER_OH];
+      const uint32_t l1CntAddr = utils::getAddress("GEM_AMC.TTC.CMD_COUNTERS.L1A");
 
-                    //If ch!=128 store the original channel mask settings
-                    if( ch != 128)
-                    {
-                        //Then mask all other channels except for channel ch
-                        uint32_t notmask = ~vfatmask[ohN] & 0xFFFFFF;
-                        for(unsigned int vfat = 0; vfat < oh::VFATS_PER_OH; ++vfat)
-                        {
-                            //Skip this vfat if it's masked
-                            if ( !( (notmask >> vfat) & 0x1)) continue;
-                            origVFATmasks[ohN][vfat] = setSingleChanMask(ohN,vfat,ch,la);
-                        } //End loop over all vfats
-                    } //End loop over vfat channels
-                } //End case this OH is not masked
-            } //End loop over optohybrids
+      for (size_t vfatN = 0; vfatN < oh::VFATS_PER_OH; ++vfatN) {
+        const std::string regName = "GEM_AMC.GEM_TESTS.VFAT_DAQ_MONITOR.VFAT" + std::to_string(vfatN) + ".GOOD_EVENTS_COUNT";
+        daqMonAddr[vfatN] = utils::getAddress(regName);
+      }
 
-            //Get the SBIT Rate Monitor Address
-            uint32_t ohTrigRateAddr[amc::OH_PER_AMC][oh::VFATS_PER_OH + 1]; //idx 0->oh::VFATS_PER_OH VFAT counters; last idx - overall rate
-            for (unsigned int ohN = 0; ohN < amc::OH_PER_AMC; ++ohN) {
-                if ((ohMask >> ohN) & 0x1) {
-                    sprintf(regBuf,"GEM_AMC.TRIGGER.OH%i.TRIGGER_RATE",ohN);
-                    ohTrigRateAddr[ohN][oh::VFATS_PER_OH] = getAddress(la, regBuf);
-                    for(unsigned int vfat=0; vfat<oh::VFATS_PER_OH; ++vfat){
-                        sprintf(regBuf,"GEM_AMC.OH.OH%i.FPGA.TRIG.CNT.VFAT%i_SBITS",ohN,vfat);
-                        ohTrigRateAddr[ohN][vfat] = getAddress(la, regBuf);
-                    } //End loop over all VFATs
-                }
-            } //End loop over optohybrids
+      // TTC Config
+      if (useExtTrig) {
+        utils::writeReg("GEM_AMC.TTC.CTRL.L1A_ENABLE", 0x0);
+        utils::writeReg("GEM_AMC.TTC.CTRL.CNT_RESET",  0x1);
+      } else {
+        utils::writeReg("GEM_AMC.TTC.GENERATOR.CYCLIC_L1A_COUNT", nevts);
+        utils::writeReg("GEM_AMC.TTC.GENERATOR.SINGLE_RESYNC",    0x1);
+      }
 
-            //Take the VFATs out of slow control only mode
-            writeReg(la, "GEM_AMC.GEM_SYSTEM.VFAT3.SC_ONLY_MODE", 0x0);
+      // Configure VFAT_DAQ_MONITOR
+      dacMonConf{}(ohN, ch);
 
-            //Prep the SBIT counters
-            std::unordered_map<uint32_t,uint32_t> map_origSBITPersist;
-            std::unordered_map<uint32_t,uint32_t> map_origSBITTimeMax;
-            for (unsigned int ohN = 0; ohN < amc::OH_PER_AMC; ++ohN) {
-                if ((ohMask >> ohN) & 0x1) {
-                    map_origSBITPersist[ohN] = readReg(la,  stdsprintf("GEM_AMC.OH.OH%i.FPGA.TRIG.CNT.SBIT_CNT_PERSIST",ohN));
-                    map_origSBITTimeMax[ohN] = readReg(la,  stdsprintf("GEM_AMC.OH.OH%i.FPGA.TRIG.CNT.SBIT_CNT_TIME_MAX",ohN));
-                    writeReg(la, stdsprintf("GEM_AMC.OH.OH%i.FPGA.TRIG.CNT.SBIT_CNT_PERSIST",ohN), 0x0); //reset all counters after SBIT_CNT_TIME_MAX
-                    writeReg(la, stdsprintf("GEM_AMC.OH.OH%i.FPGA.TRIG.CNT.SBIT_CNT_TIME_MAX",ohN), uint32_t(0x02638e98*waitTime) ); //count for a number of BX's specified by waitTime
-                }
-            }
-
-            //Loop from dacMin to dacMax in steps of dacStep
-            for (uint32_t dacVal = dacMin; dacVal <= dacMax; dacVal += dacStep) {
-                LOGGER->log_message(LogManager::INFO, stdsprintf("Setting %s to %i for all optohybrids in 0x%x",scanReg.c_str(),dacVal,ohMask));
-
-                //Set the scan register value
-                for (unsigned int ohN = 0; ohN < amc::OH_PER_AMC; ++ohN) {
-                    if ((ohMask >> ohN) & 0x1) {
-                        uint32_t notmask = ~vfatmask[ohN] & 0xFFFFFF;
-                        for(unsigned int vfat=0; vfat<oh::VFATS_PER_OH; ++vfat){
-                            if ( !( (notmask >> vfat) & 0x1)) continue;
-                            sprintf(regBuf,"GEM_AMC.OH.OH%i.GEB.VFAT%i.CFG_%s",ohN,vfat,scanReg.c_str());
-                            writeReg(la, regBuf, dacVal);
-                        } //End Loop Over all VFATs
-                    } // End checking whether the OH is masked
-                } // End loop over optohybrids
-
-                //Reset the counters
-                for (unsigned int ohN = 0; ohN < amc::OH_PER_AMC; ++ohN) {
-                    if ((ohMask >> ohN) & 0x1) {
-                        writeReg(la, stdsprintf("GEM_AMC.OH.OH%i.FPGA.TRIG.CNT.RESET",ohN), 0x1);
-                    } // End checking whether the OH is masked
-                } // End loop over optohybrids
-
-                std::this_thread::sleep_for(std::chrono::seconds(waitTime));
-
-                //Read the counters
-                for (unsigned int ohN = 0; ohN < amc::OH_PER_AMC; ++ohN) {
-                    if ((ohMask >> ohN) & 0x1) {
-                        uint32_t notmask = ~vfatmask[ohN] & 0xFFFFFF;
-                        unsigned int idx = ohN*(dacMax-dacMin+1)/dacStep + (dacVal-dacMin)/dacStep;
-                        outDataDacVal[idx] = dacVal;
-                        outDataTrigRateOverall[idx] = readRawAddress(ohTrigRateAddr[ohN][oh::VFATS_PER_OH], la->response);
-                        for(unsigned int vfat=0; vfat<oh::VFATS_PER_OH; ++vfat){
-                            if ( !( (notmask >> vfat) & 0x1)) continue;
-
-                            idx = ohN*oh::VFATS_PER_OH*(dacMax-dacMin+1)/dacStep + vfat*(dacMax-dacMin+1)/dacStep+(dacVal-dacMin)/dacStep;
-                            outDataTrigRatePerVFAT[idx] = readRawAddress(ohTrigRateAddr[ohN][vfat], la->response);
-                        } //End Loop Over all VFATs
-                    } // End checking whether the OH is masked
-                } // End loop over optohybrids
-            } //End Loop from dacMin to dacMax
-
-            //Restore the original SBIT counter persist setting
-            for (unsigned int ohN = 0; ohN < amc::OH_PER_AMC; ++ohN) {
-                if ((ohMask >> ohN) & 0x1) {
-                    writeReg(la, stdsprintf("GEM_AMC.OH.OH%i.FPGA.TRIG.CNT.SBIT_CNT_PERSIST",ohN), map_origSBITPersist[ohN]);
-                    writeReg(la, stdsprintf("GEM_AMC.OH.OH%i.FPGA.TRIG.CNT.SBIT_CNT_TIME_MAX",ohN), map_origSBITTimeMax[ohN]);
-                }
-            }
-
-            //Restore the original channel masks if specific channel was requested
-            if( ch != 128) {
-                for (unsigned int ohN = 0; ohN < amc::OH_PER_AMC; ++ohN) {
-                    if ((ohMask >> ohN) & 0x1) {
-                        uint32_t notmask = ~vfatmask[ohN] & 0xFFFFFF;
-                        for(unsigned int vfat=0; vfat<oh::VFATS_PER_OH; ++vfat){
-                            if ( !( (notmask >> vfat) & 0x1)) continue;
-                            applyChanMask(origVFATmasks[ohN][vfat], la);
-                        }
-                    }
-                }
-            }
-            break;
-        }//End v3 electronics behavior
-        default:
-        {
-            LOGGER->log_message(LogManager::ERROR, "sbitRateScan is only supported in V3 electronics");
-            sprintf(regBuf,"sbitRateScan is only supported in V3 electronics");
-            la->response->set_string("error",regBuf);
-            break;
-        }
-    }
-return;
-} //End sbitRateScanParallel(...)
-
-void sbitRateScan(const RPCMsg *request, RPCMsg *response)
-{
-    GETLOCALARGS(response);
-
-    uint32_t ohMask = request->get_word("ohMask");
-    uint32_t ch = request->get_word("ch");
-    uint32_t dacMin = request->get_word("dacMin");
-    uint32_t dacMax = request->get_word("dacMax");
-    uint32_t dacStep = request->get_word("dacStep");
-    uint32_t waitTime = request->get_word("waitTime");
-    std::string scanReg = request->get_string("scanReg");
-
-    uint32_t outDataTrigRatePerVFAT[amc::OH_PER_AMC*oh::VFATS_PER_OH*(dacMax-dacMin+1)/dacStep];
-    uint32_t outDataDacValPerOH[amc::OH_PER_AMC*(dacMax-dacMin+1)/dacStep];
-    uint32_t outDataTrigRatePerOH[amc::OH_PER_AMC*(dacMax-dacMin+1)/dacStep];
-    sbitRateScanParallelLocal(&la, outDataDacValPerOH, outDataTrigRatePerVFAT, outDataTrigRatePerOH, ch, dacMin, dacMax, dacStep, scanReg, ohMask, waitTime);
-
-    response->set_word_array("outDataVFATRate", outDataTrigRatePerVFAT, amc::OH_PER_AMC*oh::VFATS_PER_OH*(dacMax-dacMin+1)/dacStep);
-    response->set_word_array("outDataDacValue", outDataDacValPerOH, amc::OH_PER_AMC*(dacMax-dacMin+1)/dacStep);
-    response->set_word_array("outDataCTP7Rate", outDataTrigRatePerOH, amc::OH_PER_AMC*(dacMax-dacMin+1)/dacStep);
-
-    return;
-} //End sbitRateScan(...)
-
-void checkSbitMappingWithCalPulseLocal(localArgs *la, uint32_t *outData, uint32_t ohN, uint32_t vfatN, uint32_t mask, bool useCalPulse, bool currentPulse, uint32_t calScaleFactor, uint32_t nevts, uint32_t L1Ainterval, uint32_t pulseDelay)
-{
-    //Determine the inverse of the vfatmask
-    uint32_t notmask = ~mask & 0xFFFFFF;
-
-    char regBuf[200];
-    if ( fw_version_check("checkSbitMappingWithCalPulse", la) < 3) {
-        LOGGER->log_message(LogManager::ERROR, "checkSbitMappingWithCalPulse is only supported in V3 electronics");
-        sprintf(regBuf,"checkSbitMappingWithCalPulse is only supported in V3 electronics");
-        la->response->set_string("error",regBuf);
-        return;
-    }
-
-    uint32_t goodVFATs = vfatSyncCheckLocal(la, ohN);
-    if ( (notmask & goodVFATs) != notmask) {
-        sprintf(regBuf,"One of the unmasked VFATs is not Synced. goodVFATs: %x\tnotmask: %x",goodVFATs,notmask);
-        la->response->set_string("error",regBuf);
-        return;
-    }
-
-    if (currentPulse && calScaleFactor > 3) {
-        sprintf(regBuf,"Bad value for CFG_CAL_FS: %x, Possible values are {0b00, 0b01, 0b10, 0b11}. Exiting.",calScaleFactor);
-        la->response->set_string("error",regBuf);
-        return;
-    }
-
-    //Get current channel register data, mask all channels and disable calpulse
-    uint32_t chanRegData_orig[oh::CHANNELS_PER_OH]; //original channel register data
-    uint32_t chanRegData_tmp[oh::CHANNELS_PER_OH]; //temporary channel register data
-    getChannelRegistersVFAT3Local(la, ohN, mask, chanRegData_orig);
-    for (unsigned int idx=0; idx < oh::CHANNELS_PER_OH; ++idx) {
-        chanRegData_tmp[idx]=chanRegData_orig[idx]+(0x1 << 14); //set channel mask to true
-        chanRegData_tmp[idx]=chanRegData_tmp[idx]-(0x1 << 15); //disable calpulse
-    }
-    setChannelRegistersVFAT3SimpleLocal(la, ohN, mask, chanRegData_tmp);
-
-    //Setup TTC Generator
-    ttcGenConfLocal(la, ohN, 0, 0, pulseDelay, L1Ainterval, nevts, true);
-    writeReg(la, "GEM_AMC.TTC.GENERATOR.SINGLE_RESYNC", 0x1);
-    writeReg(la, "GEM_AMC.TTC.GENERATOR.CYCLIC_L1A_COUNT", 0x1); //One pulse at a time
-    uint32_t addrTtcStart = getAddress(la, "GEM_AMC.TTC.GENERATOR.CYCLIC_START");
-
-    //Set all chips out of run mode
-    broadcastWriteLocal(la, ohN, "CFG_RUN", 0x0, mask);
-
-    //Take the VFATs out of slow control only mode
-    writeReg(la, "GEM_AMC.GEM_SYSTEM.VFAT3.SC_ONLY_MODE", 0x0);
-
-    //Setup the sbit monitor
-    const unsigned int nclusters = 8;
-    writeReg(la, "GEM_AMC.TRIGGER.SBIT_MONITOR.OH_SELECT", ohN);
-    uint32_t addrSbitMonReset=getAddress(la, "GEM_AMC.TRIGGER.SBIT_MONITOR.RESET");
-    uint32_t addrSbitCluster[nclusters];
-    for (unsigned int iCluster=0; iCluster < nclusters; ++iCluster) {
-        sprintf(regBuf, "GEM_AMC.TRIGGER.SBIT_MONITOR.CLUSTER%i",iCluster);
-        addrSbitCluster[iCluster] = getAddress(la, regBuf);
-    }
-
-    if (!((notmask >> vfatN) & 0x1)) {
-        la->response->set_string("error",stdsprintf("The vfat of interest %i should not be part of the vfats to be masked: %x",vfatN, mask));
-        return;
-    }
-
-    //mask all other vfats from trigger
-    writeReg(la,stdsprintf("GEM_AMC.OH.OH%i.FPGA.TRIG.CTRL.VFAT_MASK",ohN), 0xffffff & ~(1 << (vfatN)));
-
-    //Place this vfat into run mode
-    writeReg(la,stdsprintf("GEM_AMC.OH.OH%i.GEB.VFAT%i.CFG_RUN",ohN, vfatN), 0x1);
-
-    for (unsigned int chan=0; chan < 128; ++chan) { //Loop over all channels
-        //unmask this channel
-        writeReg(la, stdsprintf("GEM_AMC.OH.OH%i.GEB.VFAT%i.VFAT_CHANNELS.CHANNEL%i.MASK",ohN,vfatN,chan), 0x0);
-
-        //Turn on the calpulse for this channel
-        if (confCalPulseLocal(la, ohN, ~((0x1)<<vfatN) & 0xFFFFFF, chan, useCalPulse, currentPulse, calScaleFactor) == false) {
-            la->response->set_string("error",stdsprintf("Unable to configure calpulse %b for ohN %i mask %x chan %i", useCalPulse, ohN, ~((0x1)<<vfatN) & 0xFFFFFF, chan));
-            return; //Calibration pulse is not configured correctly
+      // Scan over DAC values
+      for (uint32_t dacVal = dacMin; dacVal <= dacMax; dacVal += dacStep) {
+        for (size_t vfatN = 0; vfatN < oh::VFATS_PER_OH; ++vfatN) {
+          if ((notmask >> vfatN) & 0x1) {
+            utils::writeReg("GEM_AMC.OH.OH" + std::to_string(ohN) + ".GEB.VFAT" + std::to_string(vfatN) + ".CFG_" + scanReg, dacVal);
+          }
         }
 
-        //Start Pulsing
-        for (unsigned int iPulse=0; iPulse < nevts; ++iPulse) { //Pulse this channel
-            //Reset monitors
-            writeRawAddress(addrSbitMonReset, 0x1, la->response);
+        // Reset and enable the VFAT_DAQ_MONITOR
+        utils::writeReg("GEM_AMC.GEM_TESTS.VFAT_DAQ_MONITOR.CTRL.RESET",  0x1);
+        utils::writeReg("GEM_AMC.GEM_TESTS.VFAT_DAQ_MONITOR.CTRL.ENABLE", 0x1);
 
-            //Start the TTC Generator
-            if (useCalPulse) {
-                writeRawAddress(addrTtcStart, 0x1, la->response);
+        // Start the triggers
+        if (useExtTrig) {
+          utils::writeReg("GEM_AMC.TTC.CTRL.CNT_RESET",  0x1);
+          utils::writeReg("GEM_AMC.TTC.CTRL.L1A_ENABLE", 0x1);
+
+          uint32_t l1aCnt = 0;
+          while (l1aCnt < nevts) {
+            l1aCnt = utils::readRawAddress(l1CntAddr);
+            std::this_thread::sleep_for(std::chrono::microseconds(200));
+          }
+
+          utils::writeReg("GEM_AMC.TTC.CTRL.L1A_ENABLE", 0x0);
+          l1aCnt = utils::readRawAddress(l1CntAddr);
+        } else {
+          utils::writeReg("GEM_AMC.TTC.GENERATOR.CYCLIC_START", 0x1);
+          if (utils::readReg("GEM_AMC.TTC.GENERATOR.ENABLE")) {
+            while (utils::readReg("GEM_AMC.TTC.GENERATOR.CYCLIC_RUNNING")) {
+              std::this_thread::sleep_for(std::chrono::microseconds(50));
             }
-
-            //Sleep for 200 us + pulseDelay * 25 ns * (0.001 us / ns)
-            std::this_thread::sleep_for(std::chrono::microseconds(200+int(ceil(pulseDelay*25*0.001))));
-
-            //Check clusers
-            for (unsigned int cluster=0; cluster<nclusters; ++cluster) {
-                //int idx = vfatN * posPerVFAT + chan * posPerChan + iPulse * posPerEvt + cluster; //Array index
-                unsigned int idx = chan * (nevts*nclusters) + (iPulse*nclusters+cluster);
-
-                //bits [10:0] is the address of the cluster
-                //bits [14:12] is the cluster size
-                //bits 15 and 11 are not used
-                uint32_t thisCluster = readRawAddress(addrSbitCluster[cluster], la->response);
-                unsigned int clusterSize = (thisCluster >> 12) & 0x7;
-                uint32_t sbitAddress = (thisCluster & 0x7ff);
-                bool isValid = (sbitAddress < oh::SBITS_PER_OH); //Possible values are [0,(oh::SBITS_PER_OH)-1]
-                int vfatObserved = 7-int(sbitAddress/192)+int((sbitAddress%192)/64)*8;
-                int sbitObserved = sbitAddress % 64;
-
-                outData[idx] = ((clusterSize & 0x7 ) << 27) + ((isValid & 0x1) << 26) + ((vfatObserved & 0x1f) << 21) + ((vfatN & 0x1f) << 16) + ((sbitObserved & 0xff) << 8) + (chan & 0xff);
-
-                if (isValid) {
-                    LOGGER->log_message(
-                            LogManager::INFO,
-                            stdsprintf(
-                                "valid sbit data: useCalPulse %i; thisClstr %x; clstrSize %x; sbitAddr %x; isValid %x; vfatN %i; vfatObs %i; chan %i; sbitObs %i",
-                                useCalPulse, thisCluster, clusterSize, sbitAddress, isValid, vfatN, vfatObserved, chan, sbitObserved));
-                }
-            } //End Loop over clusters
-        } //End Pulses for this channel
-
-        //Turn off the calpulse for this channel
-        if (confCalPulseLocal(la, ohN, ~((0x1)<<vfatN) & 0xFFFFFF, chan, false, currentPulse, calScaleFactor) == false) {
-            la->response->set_string("error",stdsprintf("Unable to configure calpulse OFF for ohN %i mask %x chan %i", ohN, ~((0x1)<<vfatN) & 0xFFFFFF, chan));
-            return; //Calibration pulse is not configured correctly
+          }
         }
 
-        //mask this channel
-        writeReg(la, stdsprintf("GEM_AMC.OH.OH%i.GEB.VFAT%i.VFAT_CHANNELS.CHANNEL%i.MASK",ohN,vfatN,chan), 0x1);
-    } //End Loop over all channels
-
-    //Place this vfat out of run mode
-    writeReg(la,stdsprintf("GEM_AMC.OH.OH%i.GEB.VFAT%i.CFG_RUN",ohN, vfatN), 0x0);
-    //} //End Loop over all VFATs
-
-    //turn off TTC Generator
-    ttcGenToggleLocal(la, ohN, false);
-
-    //Return channel register settings to their original values
-    setChannelRegistersVFAT3SimpleLocal(la, ohN, mask, chanRegData_orig);
-
-    //Set trigger vfat mask for this OH back to 0
-    writeReg(la, stdsprintf("GEM_AMC.OH.OH%i.FPGA.TRIG.CTRL.VFAT_MASK",ohN), 0x0);
-
-    return;
-} //End checkSbitMappingWithCalPulseLocal(...)
-
-void checkSbitMappingWithCalPulse(const RPCMsg *request, RPCMsg *response)
-{
-    GETLOCALARGS(response);
-
-    uint32_t ohN = request->get_word("ohN");
-    uint32_t vfatN = request->get_word("vfatN");
-    uint32_t mask = request->get_word("mask");
-    bool useCalPulse = request->get_word("useCalPulse");
-    bool currentPulse = request->get_word("currentPulse");
-    uint32_t calScaleFactor = request->get_word("calScaleFactor");
-    uint32_t nevts = request->get_word("nevts");
-    uint32_t L1Ainterval = request->get_word("L1Ainterval");
-    uint32_t pulseDelay = request->get_word("pulseDelay");
-
-    uint32_t outData[128*8*nevts];
-    checkSbitMappingWithCalPulseLocal(&la, outData, ohN, vfatN, mask, useCalPulse, currentPulse, calScaleFactor, nevts, L1Ainterval, pulseDelay);
-
-    response->set_word_array("data",outData,128*8*nevts);
-
-    rtxn.abort();
-} //End checkSbitMappingWithCalPulse()
-
-void checkSbitRateWithCalPulseLocal(localArgs *la, uint32_t *outDataCTP7Rate, uint32_t *outDataFPGAClusterCntRate, uint32_t *outDataVFATSBits, uint32_t ohN, uint32_t vfatN, uint32_t mask, bool useCalPulse, bool currentPulse, uint32_t calScaleFactor, uint32_t waitTime, uint32_t pulseRate, uint32_t pulseDelay)
-{
-    //Determine the inverse of the vfatmask
-    uint32_t notmask = ~mask & 0xFFFFFF;
-
-    char regBuf[200];
-    if ( fw_version_check("checkSbitRateWithCalPulse", la) < 3) {
-        LOGGER->log_message(LogManager::ERROR, "checkSbitRateWithCalPulse is only supported in V3 electronics");
-        sprintf(regBuf,"checkSbitRateWithCalPulse is only supported in V3 electronics");
-        la->response->set_string("error",regBuf);
-        return;
-    }
-
-    uint32_t goodVFATs = vfatSyncCheckLocal(la, ohN);
-    if ( (notmask & goodVFATs) != notmask) {
-        sprintf(regBuf,"One of the unmasked VFATs is not Synced. goodVFATs: %x\tnotmask: %x",goodVFATs,notmask);
-        la->response->set_string("error",regBuf);
-        return;
-    }
-
-    if (currentPulse && calScaleFactor > 3) {
-        sprintf(regBuf,"Bad value for CFG_CAL_FS: %x, Possible values are {0b00, 0b01, 0b10, 0b11}. Exiting.",calScaleFactor);
-        la->response->set_string("error",regBuf);
-        return;
-    }
-
-    //Get current channel register data, mask all channels and disable calpulse
-    LOGGER->log_message(LogManager::INFO, stdsprintf("Storing vfat3 channel registers on ohN %i", ohN));
-    uint32_t chanRegData_orig[oh::CHANNELS_PER_OH]; //original channel register data
-    uint32_t chanRegData_tmp[oh::CHANNELS_PER_OH]; //temporary channel register data
-    LOGGER->log_message(LogManager::INFO, stdsprintf("Masking all channels and disabling calpulse for vfats on ohN %i", ohN));
-    getChannelRegistersVFAT3Local(la, ohN, mask, chanRegData_orig);
-    for (unsigned int idx=0; idx < oh::CHANNELS_PER_OH; ++idx) {
-        chanRegData_tmp[idx]=chanRegData_orig[idx]+(0x1 << 14); //set channel mask to true
-        chanRegData_tmp[idx]=chanRegData_tmp[idx]-(0x1 << 15); //disable calpulse
-    }
-    setChannelRegistersVFAT3SimpleLocal(la, ohN, mask, chanRegData_tmp);
-
-    //Setup TTC Generator
-    uint32_t L1Ainterval;
-    if (pulseRate > 0) {
-        L1Ainterval = int(40079000 / pulseRate);
-    }
-    else{
-        L1Ainterval = 0;
-    }
-    uint32_t addrTtcReset = getAddress(la, "GEM_AMC.TTC.GENERATOR.RESET");
-    uint32_t addrTtcStart = getAddress(la, "GEM_AMC.TTC.GENERATOR.CYCLIC_START");
-
-    //Get Trigger addresses
-    uint32_t ohTrigRateAddr[oh::VFATS_PER_OH + 2]; //idx 0->oh::VFATS_PER_OH VFAT counters; idx oh::VFATS_PER_OH+1 - rate measured by OH FPGA; last idx - rate measured by CTP7
-    for (unsigned int vfat=0; vfat<oh::VFATS_PER_OH; ++vfat) {
-        ohTrigRateAddr[vfat] = getAddress(la, stdsprintf("GEM_AMC.OH.OH%i.FPGA.TRIG.CNT.VFAT%i_SBITS",ohN,vfat));
-    } //End Loop over all VFATs
-    ohTrigRateAddr[oh::VFATS_PER_OH] = getAddress(la, stdsprintf("GEM_AMC.OH.OH%i.FPGA.TRIG.CNT.CLUSTER_COUNT",ohN));
-    ohTrigRateAddr[oh::VFATS_PER_OH + 1] = getAddress(la, stdsprintf("GEM_AMC.TRIGGER.OH%i.TRIGGER_RATE",ohN));
-    uint32_t addTrgCntResetOH = getAddress(la, stdsprintf("GEM_AMC.OH.OH%i.FPGA.TRIG.CNT.RESET",ohN));
-    uint32_t addTrgCntResetCTP7 = getAddress(la,"GEM_AMC.TRIGGER.CTRL.CNT_RESET");
-
-    //Set all chips out of run mode
-    LOGGER->log_message(LogManager::INFO, stdsprintf("Writing CFG_RUN to 0x0 for all VFATs on ohN %i using mask %x",ohN, mask));
-    broadcastWriteLocal(la, ohN, "CFG_RUN", 0x0, mask);
-
-    //Take the VFATs out of slow control only mode
-    LOGGER->log_message(LogManager::INFO, "Taking VFAT3s out of slow control only mode");
-    writeReg(la, "GEM_AMC.GEM_SYSTEM.VFAT3.SC_ONLY_MODE", 0x0);
-
-    //Prep the SBIT counters
-    LOGGER->log_message(LogManager::INFO, stdsprintf("Preping SBIT Counters for ohN %i", ohN));
-    writeReg(la, stdsprintf("GEM_AMC.OH.OH%i.FPGA.TRIG.CNT.SBIT_CNT_PERSIST",ohN), 0x0); //reset all counters after SBIT_CNT_TIME_MAX
-    writeReg(la, stdsprintf("GEM_AMC.OH.OH%i.FPGA.TRIG.CNT.SBIT_CNT_TIME_MAX",ohN), uint32_t(0x02638e98*waitTime/1000.) ); //count for a number of BX's specified by waitTime
-
-    if (!((notmask >> vfatN) & 0x1)) {
-        la->response->set_string("error",stdsprintf("The vfat of interest %i should not be part of the vfats to be masked: %x",vfatN, mask));
-        return;
-    }
-
-    //mask all other vfats from trigger
-    LOGGER->log_message(LogManager::INFO, stdsprintf("Masking VFATs %x from trigger in ohN %i", 0xffffff & ~(1 << (vfatN)), ohN));
-    writeReg(la,stdsprintf("GEM_AMC.OH.OH%i.FPGA.TRIG.CTRL.VFAT_MASK",ohN), 0xffffff & ~(1 << (vfatN)));
-
-    //Place this vfat into run mode
-    LOGGER->log_message(LogManager::INFO, stdsprintf("Placing vfatN %i on ohN %i in run mode", vfatN, ohN));
-    writeReg(la,stdsprintf("GEM_AMC.OH.OH%i.GEB.VFAT%i.CFG_RUN",ohN, vfatN), 0x1);
-
-    LOGGER->log_message(LogManager::INFO, stdsprintf("Looping over all channels of vfatN %i on ohN %i", vfatN, ohN));
-    for (unsigned int chan=0; chan < 128; ++chan) { //Loop over all channels
-        //unmask this channel
-        LOGGER->log_message(LogManager::INFO, stdsprintf("Unmasking channel %i on vfat %i of OH %i", chan, vfatN, ohN));
-        writeReg(la, stdsprintf("GEM_AMC.OH.OH%i.GEB.VFAT%i.VFAT_CHANNELS.CHANNEL%i.MASK",ohN,vfatN,chan), 0x0);
-
-        //Turn on the calpulse for this channel
-        LOGGER->log_message(LogManager::INFO, stdsprintf("Enabling calpulse for channel %i on vfat %i of OH %i", chan, vfatN, ohN));
-        if (confCalPulseLocal(la, ohN, ~((0x1)<<vfatN) & 0xFFFFFF, chan, useCalPulse, currentPulse, calScaleFactor) == false) {
-            la->response->set_string("error",stdsprintf("Unable to configure calpulse %b for ohN %i mask %x chan %i", useCalPulse, ohN, ~((0x1)<<vfatN) & 0xFFFFFF, chan));
-            return; //Calibration pulse is not configured correctly
-        }
-
-        //Reset counters
-        LOGGER->log_message(LogManager::INFO, "Reseting trigger counters on OH & CTP7");
-        writeRawAddress(addTrgCntResetOH, 0x1, la->response);
-        writeRawAddress(addTrgCntResetCTP7, 0x1, la->response);
-        //also use daq monitor here...?
-
-        //Start the TTC Generator
-        LOGGER->log_message(LogManager::INFO, stdsprintf("Configuring TTC Generator to use OH %i with pulse delay %i and L1Ainterval %i",ohN,pulseDelay,L1Ainterval));
-        ttcGenConfLocal(la, ohN, 0, 0, pulseDelay, L1Ainterval, 0, true);
-        writeReg(la, "GEM_AMC.TTC.GENERATOR.SINGLE_RESYNC", 0x1);
-        writeReg(la, "GEM_AMC.TTC.GENERATOR.CYCLIC_L1A_COUNT", 0x0); //Continue until stopped
-        LOGGER->log_message(LogManager::INFO, "Starting TTC Generator");
-        writeRawAddress(addrTtcStart, 0x1, la->response);
-
-        //Sleep for waitTime of milliseconds
-        std::this_thread::sleep_for(std::chrono::milliseconds(waitTime));
-
-        //Read All Trigger Registers
-        LOGGER->log_message(LogManager::INFO, "Reading trigger counters");
-        outDataCTP7Rate[chan]=readRawAddress(ohTrigRateAddr[oh::VFATS_PER_OH + 1], la->response);
-        outDataFPGAClusterCntRate[chan]=readRawAddress(ohTrigRateAddr[oh::VFATS_PER_OH], la->response)*waitTime/1000.;
-        outDataVFATSBits[chan]=readRawAddress(ohTrigRateAddr[vfatN], la->response)*waitTime/1000.;
-
-        //Reset the TTC Generator
-        LOGGER->log_message(LogManager::INFO, "Stopping TTC Generator");
-        writeRawAddress(addrTtcReset, 0x1, la->response);
-
-        //Turn off the calpulse for this channel
-        LOGGER->log_message(LogManager::INFO, stdsprintf("Disabling calpulse for channel %i on vfat %i of OH %i", chan, vfatN, ohN));
-        if (confCalPulseLocal(la, ohN, ~((0x1)<<vfatN) & 0xFFFFFF, chan, false, currentPulse, calScaleFactor) == false) {
-            la->response->set_string("error",stdsprintf("Unable to configure calpulse OFF for ohN %i mask %x chan %i", ohN, ~((0x1)<<vfatN) & 0xFFFFFF, chan));
-            return; //Calibration pulse is not configured correctly
-        }
-
-        //mask this channel
-        LOGGER->log_message(LogManager::INFO, stdsprintf("Masking channel %i on vfat %i of OH %i", chan, vfatN, ohN));
-        writeReg(la, stdsprintf("GEM_AMC.OH.OH%i.GEB.VFAT%i.VFAT_CHANNELS.CHANNEL%i.MASK",ohN,vfatN,chan), 0x1);
-    } //End Loop over all channels
-
-    //Place this vfat out of run mode
-    LOGGER->log_message(LogManager::INFO, stdsprintf("Finished looping over all channels.  Taking vfatN %i on ohN %i out of run mode", vfatN, ohN));
-    writeReg(la,stdsprintf("GEM_AMC.OH.OH%i.GEB.VFAT%i.CFG_RUN",ohN, vfatN), 0x0);
-
-    //turn off TTC Generator
-    LOGGER->log_message(LogManager::INFO, "Disabling TTC Generator");
-    ttcGenToggleLocal(la, ohN, false);
-
-    //Return channel register settings to their original values
-    LOGGER->log_message(LogManager::INFO, stdsprintf("Reverting vfat3 channel registers on ohN %i to original values",ohN));
-    setChannelRegistersVFAT3SimpleLocal(la, ohN, mask, chanRegData_orig);
-
-    //Set trigger vfat mask for this OH back to 0
-    LOGGER->log_message(LogManager::INFO, stdsprintf("Reverting GEM_AMC.OH.OH%i.FPGA.TRIG.CTRL.VFAT_MASK to 0x0", ohN));
-    writeReg(la, stdsprintf("GEM_AMC.OH.OH%i.FPGA.TRIG.CTRL.VFAT_MASK",ohN), 0x0);
-
-    return;
-} //End checkSbitRateWithCalPulseLocal()
-
-void checkSbitRateWithCalPulse(const RPCMsg *request, RPCMsg *response)
-{
-    GETLOCALARGS(response);
-
-    uint32_t ohN = request->get_word("ohN");
-    uint32_t vfatN = request->get_word("vfatN");
-    uint32_t mask = request->get_word("mask");
-    bool useCalPulse = request->get_word("useCalPulse");
-    bool currentPulse = request->get_word("currentPulse");
-    uint32_t calScaleFactor = request->get_word("calScaleFactor");
-    uint32_t waitTime = request->get_word("waitTime");
-    uint32_t pulseRate = request->get_word("pulseRate");
-    uint32_t pulseDelay = request->get_word("pulseDelay");
-
-    uint32_t outDataCTP7Rate[128];
-    uint32_t outDataFPGAClusterCntRate[128];
-    uint32_t outDataVFATSBits[128];
-    checkSbitRateWithCalPulseLocal(&la, outDataCTP7Rate, outDataFPGAClusterCntRate, outDataVFATSBits, ohN, vfatN, mask, useCalPulse, currentPulse, calScaleFactor, waitTime, pulseRate, pulseDelay);
-
-    response->set_word_array("outDataCTP7Rate",outDataCTP7Rate,128);
-    response->set_word_array("outDataFPGAClusterCntRate",outDataFPGAClusterCntRate,128);
-    response->set_word_array("outDataVFATSBits",outDataVFATSBits,128);
-
-    rtxn.abort();
-} //End checkSbitRateWithCalPulse()
-
-std::vector<uint32_t> dacScanLocal(localArgs *la, uint32_t ohN, uint32_t dacSelect, uint32_t dacStep, uint32_t mask, bool useExtRefADC)
-{
-    //Ensure VFAT3 Hardware
-    if (fw_version_check("dacScanLocal", la) < 3) {
-        LOGGER->log_message(LogManager::ERROR, "dacScanLocal is only supported in V3 electronics");
-        la->response->set_string("error","dacScanLocal is only supported in V3 electronics");
-        std::vector<uint32_t> emptyVec;
-        return emptyVec;
-    }
-
-    vfat3DACAndSize dacInfo;
-    auto map_dacSelect = dacInfo.map_dacInfo;
-
-    // Check if dacSelect is valid
-    if (map_dacSelect.count(dacSelect) == 0) { //Case: dacSelect not found, exit
-        std::string errMsg = "Monitoring Select value " + std::to_string(dacSelect) + " not found, possible values are:\n";
-
-        for (auto iterDacSel = map_dacSelect.begin(); iterDacSel != map_dacSelect.end(); ++iterDacSel) {
-            errMsg+="\t" + std::to_string((*iterDacSel).first) + "\t" + std::get<0>((*iterDacSel).second) + "\n";
-        }
-        la->response->set_string("error",errMsg);
-        std::vector<uint32_t> emptyVec;
-        return emptyVec;
-    } //End Case: dacSelect not found, exit
-
-    //Check which VFATs are sync'd
-    uint32_t notmask = ~mask & 0xFFFFFF; //Inverse of the vfatmask
-    uint32_t goodVFATs = vfatSyncCheckLocal(la, ohN);
-    if ( (notmask & goodVFATs) != notmask) {
-        la->response->set_string("error",stdsprintf("One of the unmasked VFATs is not Synced. goodVFATs: %x\tnotmask: %x",goodVFATs,notmask));
-        std::vector<uint32_t> emptyVec;
-        return emptyVec;
-    }
-
-    //Determine the addresses
-    std::string regName = std::get<0>(map_dacSelect[dacSelect]);
-    LOGGER->log_message(LogManager::INFO, stdsprintf("Scanning DAC: %s",regName.c_str()));
-    uint32_t adcAddr[oh::VFATS_PER_OH];
-    uint32_t adcCacheUpdateAddr[oh::VFATS_PER_OH];
-    bool foundAdcCached = false;
-    for (unsigned int vfatN=0; vfatN<oh::VFATS_PER_OH; ++vfatN) {
-        //Skip Masked VFATs
-        if ( !( (notmask >> vfatN) & 0x1)) continue;
-
-        //Determine Register Base string
-        std::string strRegBase = stdsprintf("GEM_AMC.OH.OH%i.GEB.VFAT%i.",ohN,vfatN);
-
-        //Get ADC address
-        if (useExtRefADC) { //Case: Use ADC with external reference
-            //for backward compatibility, use ADC1 instead of ADC1_CACHED if it exists
-            if ((foundAdcCached = la->dbi.get(la->rtxn, strRegBase + "ADC1_CACHED"))) {
-                adcAddr[vfatN] = getAddress(la, strRegBase + "ADC1_CACHED");
-                adcCacheUpdateAddr[vfatN] = getAddress(la, strRegBase + "ADC1_UPDATE");
-            }
-            else
-                adcAddr[vfatN] = getAddress(la, strRegBase + "ADC1");
-        } //End Case: Use ADC with external reference
-        else{ //Case: Use ADC with internal reference
-            //for backward compatibility, use ADC0 instead of ADC0_CACHED if it exists
-            if ((foundAdcCached = la->dbi.get(la->rtxn, strRegBase + "ADC0_CACHED"))) {
-                adcAddr[vfatN] = getAddress(la, strRegBase + "ADC0_CACHED");
-                adcCacheUpdateAddr[vfatN] = getAddress(la, strRegBase + "ADC0_UPDATE");
-            }
-            else
-                adcAddr[vfatN] = getAddress(la, strRegBase + "ADC0");
-        } //End Case: Use ADC with internal reference
-    } //End Loop over VFATs
-
-    //make the output container and correctly size it
-    uint32_t dacMax = std::get<2>(map_dacSelect[dacSelect]);
-    uint32_t dacMin = std::get<1>(map_dacSelect[dacSelect]);
-    unsigned int nDacValues = (dacMax-dacMin+1)/dacStep;
-    std::vector<uint32_t> vec_dacScanData(oh::VFATS_PER_OH*nDacValues); //Each element has bits [0:7] as the current dacValue, and bits [8:17] as the ADC read back value
-
-    //Block L1A's then take VFATs out of run mode
-    writeReg(la, "GEM_AMC.TTC.CTRL.L1A_ENABLE", 0x0);
-    broadcastWriteLocal(la, ohN, "CFG_RUN", 0x0, mask);
-
-    //Block L1A's then take VFATs out of run mode
-    writeReg(la, "GEM_AMC.TTC.CTRL.L1A_ENABLE", 0x0);
-    broadcastWriteLocal(la, ohN, "CFG_RUN", 0x0, mask);
-
-    //Configure the DAC Monitoring on all the VFATs
-    configureVFAT3DacMonitorLocal(la, ohN, mask, dacSelect);
-
-    //Set the VFATs into Run Mode
-    writeReg(la, "GEM_AMC.GEM_SYSTEM.VFAT3.SC_ONLY_MODE", 0x0);
-    broadcastWriteLocal(la, ohN, "CFG_RUN", 0x1, mask);
-    LOGGER->log_message(LogManager::INFO, stdsprintf("VFATs not in 0x%x were set to run mode", mask));
-    std::this_thread::sleep_for(std::chrono::seconds(1)); //I noticed that DAC values behave weirdly immediately after VFAT is placed in run mode (probably voltage/current takes a moment to stabalize)
-
-    //Scan the DAC
-
-    uint32_t nReads=100;
-    for (uint32_t dacVal=dacMin; dacVal<=dacMax; dacVal += dacStep) { //Loop over DAC values
-        for (unsigned int vfatN=0; vfatN<oh::VFATS_PER_OH; ++vfatN) { //Loop over VFATs
-            //Skip masked VFATs
-            if ( !( (notmask >> vfatN) & 0x1)) { //Case: VFAT is masked, skip
-                //Store word, but with adcVal = 0
-                unsigned int idx = vfatN*(dacMax-dacMin+1)/dacStep+(dacVal-dacMin)/dacStep;
-                vec_dacScanData[idx] = ((ohN & 0xf) << 23) + ((vfatN & 0x1f) << 18) + (dacVal & 0xff);
-
-                //skip
-                continue;
-            } //End Case: VFAT is masked, skip
-            else{ //Case: VFAT is not masked
-            //Set DAC value
-                std::string strDacReg = stdsprintf("GEM_AMC.OH.OH%i.GEB.VFAT%i.",ohN,vfatN) + regName;
-                writeReg(la, strDacReg, dacVal);
-                //Read nReads times and take avg value
-                uint32_t adcVal=0;
-                for (uint32_t i=0; i<nReads; ++i) {
-                    //Read the ADC
-                    if (foundAdcCached) {
-                        //either reading or writing this register will trigger a cache update
-                        readRawAddress(adcCacheUpdateAddr[vfatN], la->response);
-                        //updating the cache takes 20 us, including a 50% safety factor
-                        std::this_thread::sleep_for(std::chrono::microseconds(20));
-                    }
-                    adcVal += readRawAddress(adcAddr[vfatN], la->response);
-                }
-                adcVal = adcVal/nReads;
-                //Store value
-                unsigned int idx = vfatN*(dacMax-dacMin+1)/dacStep+(dacVal-dacMin)/dacStep;
-                vec_dacScanData[idx] = ((ohN & 0xf) << 23) + ((vfatN & 0x1f) << 18) + ((adcVal & 0x3ff) << 8) + (dacVal & 0xff);
-            } //End Case: VFAT is not masked
-        } //End Loop over VFATs
-    } //End Loop over DAC values
-
-
-    //Take the VFATs out of Run Mode
-    broadcastWriteLocal(la, ohN, "CFG_RUN", 0x0, mask);
-
-    return vec_dacScanData;
-} //End dacScanLocal(...)
-
-void dacScan(const RPCMsg *request, RPCMsg *response)
-{
-    GETLOCALARGS(response);
-
-    uint32_t ohN = request->get_word("ohN");
-    uint32_t dacSelect = request->get_word("dacSelect");
-    uint32_t dacStep = request->get_word("dacStep");
-    uint32_t mask = request->get_word("mask");
-    bool useExtRefADC = request->get_word("useExtRefADC");
-
-    std::vector<uint32_t> dacScanResults = dacScanLocal(&la, ohN, dacSelect, dacStep, mask, useExtRefADC);
-    response->set_word_array("dacScanResults",dacScanResults);
-
-    rtxn.abort();
-} //End dacScan(...)
-
-void dacScanMultiLink(const RPCMsg *request, RPCMsg *response)
-{
-    GETLOCALARGS(response);
-
-    uint32_t ohMask = request->get_word("ohMask");
-    uint32_t dacSelect = request->get_word("dacSelect");
-    uint32_t dacStep = request->get_word("dacStep");
-    bool useExtRefADC = request->get_word("useExtRefADC");
-
-    unsigned int NOH = readReg(&la, "GEM_AMC.GEM_SYSTEM.CONFIG.NUM_OF_OH");
-    if (request->get_key_exists("NOH")) {
-        unsigned int NOH_requested = request->get_word("NOH");
-        if (NOH_requested <= NOH)
-            NOH = NOH_requested;
-        else
-            LOGGER->log_message(LogManager::WARNING, stdsprintf("NOH requested (%i) > NUM_OF_OH AMC register value (%i), NOH request will be disregarded",NOH_requested,NOH));
-    }
-
-    vfat3DACAndSize dacInfo;
-    std::vector<uint32_t> dacScanResultsAll;
-    for (unsigned int ohN=0; ohN<NOH; ++ohN) {
-        std::vector<uint32_t> dacScanResults;
-
-        // If this Optohybrid is masked skip it
-        if (!((ohMask >> ohN) & 0x1)) {
-            int dacMax = std::get<2>(dacInfo.map_dacInfo[dacSelect]);
-            dacScanResults.assign( (dacMax+1)*oh::VFATS_PER_OH/dacStep, 0xdeaddead );
-            std::copy(dacScanResults.begin(), dacScanResults.end(), std::back_inserter(dacScanResultsAll));
+        // Stop the DAQ monitor counters from incrementing
+        utils::writeReg("GEM_AMC.GEM_TESTS.VFAT_DAQ_MONITOR.CTRL.ENABLE", 0x0);
+
+        // Read the DAQ Monitor counters
+        for (size_t vfatN = 0; vfatN < oh::VFATS_PER_OH; ++vfatN) {
+          if (!((notmask >> vfatN) & 0x1)) {
+            outData.push_back(0x0);
             continue;
+          }
+
+          // const uint32_t idx = vfatN*(dacMax-dacMin+1)/dacStep+(dacVal-dacMin)/dacStep;
+          outData.push_back(utils::readRawAddress(daqMonAddr[vfatN]));
+
+          LOG4CPLUS_DEBUG(logger, scanReg << " Value: " << dacVal
+                          << "; Readback Val: "
+                          << utils::readReg("GEM_AMC.OH.OH" + std::to_string(ohN) + ".GEB.VFAT" + std::to_string(vfatN) + ".CFG_" + scanReg)
+                          << "; Nhits: "
+                          << utils::readReg("GEM_AMC.GEM_TESTS.VFAT_DAQ_MONITOR.VFAT" + std::to_string(vfatN) + ".CHANNEL_FIRE_COUNT")
+                          << "; Nev: "
+                          << utils::readReg("GEM_AMC.GEM_TESTS.VFAT_DAQ_MONITOR.VFAT" + std::to_string(vfatN) + ".GOOD_EVENTS_COUNT")
+                          << "; CFG_THR_ARM: "
+                          << utils::readReg("GEM_AMC.OH.OH" + std::to_string(ohN) + ".GEB.VFAT" + std::to_string(vfatN) + ".CFG_THR_ARM_DAC")
+                          );
         }
+      }
 
-        //Get vfatmask for this OH
-        LOGGER->log_message(LogManager::INFO, stdsprintf("Getting VFAT Mask for OH%i", ohN));
-        uint32_t vfatMask = getOHVFATMaskLocal(&la, ohN);
-
-        //Get dac scan results for this optohybrid
-        LOGGER->log_message(LogManager::INFO, stdsprintf("Performing DAC Scan for OH%i", ohN));
-        dacScanResults = dacScanLocal(&la, ohN, dacSelect, dacStep, vfatMask, useExtRefADC);
-
-        //Copy the results into the final container
-        LOGGER->log_message(LogManager::INFO, stdsprintf("Storing results of DAC scan for OH%i", ohN));
-        std::copy(dacScanResults.begin(), dacScanResults.end(), std::back_inserter(dacScanResultsAll));
-
-        LOGGER->log_message(LogManager::INFO, stdsprintf("Finished DAC scan for OH%i", ohN));
-    } //End Loop over all Optohybrids
-
-    response->set_word_array("dacScanResultsAll",dacScanResultsAll);
-    LOGGER->log_message(LogManager::INFO, stdsprintf("Finished DAC scans for OH Mask 0x%x", ohMask));
-
-    rtxn.abort();
-} //End dacScanMultiLink(...)
-
-void genChannelScan(const RPCMsg *request, RPCMsg *response)
-{
-    GETLOCALARGS(response);
-
-    uint32_t nevts = request->get_word("nevts");
-    uint32_t ohN = request->get_word("ohN");
-    uint32_t mask = request->get_word("mask");
-    uint32_t dacMin = request->get_word("dacMin");
-    uint32_t dacMax = request->get_word("dacMax");
-    uint32_t dacStep = request->get_word("dacStep");
-    bool useCalPulse = request->get_word("useCalPulse");
-    bool currentPulse = request->get_word("currentPulse");
-    uint32_t calScaleFactor = request->get_word("calScaleFactor");
-    bool useExtTrig = request->get_word("useExtTrig");
-    std::string scanReg = request->get_string("scanReg");
-
-    bool useUltra = false;
-    if (request->get_key_exists("useUltra")) {
-        useUltra = true;
+      // If the calpulse for channel ch was turned on, turn it off
+      if (useCalPulse) {
+        try {
+          confCalPulse{}(ohN, vfatMask, ch, false, currentPulse, calScaleFactor);
+        } catch (const std::runtime_error &e) {
+          std::stringstream errmsg;
+          errmsg << "Unable to configure CalPulse OFF for OH" << ohN
+                 << " with vfatMask 0x" << std::hex << std::setw(6) << std::setfill('0') << vfatMask << std::dec
+                 << " channel " << ch
+                 << ". Caught " << e.what();
+          throw std::runtime_error(errmsg.str());
+        }
+      }
+      break;
     }
-
-    uint32_t outData[128*oh::VFATS_PER_OH*(dacMax-dacMin+1)/dacStep];
-    for (uint32_t ch = 0; ch < 128; ch++) {
-        genScanLocal(&la, &(outData[ch*oh::VFATS_PER_OH*(dacMax-dacMin+1)/dacStep]), ohN, mask, ch, useCalPulse, currentPulse, calScaleFactor, nevts, dacMin, dacMax, dacStep, scanReg, useUltra, useExtTrig);
-    }
-    response->set_word_array("data",outData,oh::VFATS_PER_OH*128*(dacMax-dacMin+1)/dacStep);
-
-    rtxn.abort();
+  case 1:
+    // LOG4CPLUS_WARN(logger, "V2b electronics are not supported [[deprecated]]");
+    throw std::runtime_error("V2b electronics are not supported [[deprecated]]");
+  default:
+    LOG4CPLUS_ERROR(logger, "Unexpected value for system release major, do nothing");
+    break;
+  }
+  return outData;
 }
 
-void confCalPulse(const RPCMsg *request, RPCMsg *response)
+std::map<uint32_t, std::vector<uint32_t>> calibration::genChannelScan::operator()(const uint16_t &ohN,
+                                                                                  const uint32_t &vfatMask,
+                                                                                  const bool &useCalPulse,
+                                                                                  const bool &currentPulse,
+                                                                                  const uint32_t &calScaleFactor,
+                                                                                  const uint32_t &nevts,
+                                                                                  const uint32_t &dacMin,
+                                                                                  const uint32_t &dacMax,
+                                                                                  const uint32_t &dacStep,
+                                                                                  const std::string &scanReg,
+                                                                                  const bool &useUltra=false,
+                                                                                  const bool &useExtTrig=false) const
 {
-    GETLOCALARGS(response);
+  std::map<uint32_t, std::vector<uint32_t>> outData;
 
-    uint32_t ohN = request->get_word("ohN");
-    uint32_t mask = request->get_word("mask");
-    uint32_t ch = request->get_word("ch");
-    bool toggleOn = request->get_word("toggleOn");
-    bool currentPulse = request->get_word("currentPulse");
-    uint32_t calScaleFactor = request->get_word("calScaleFactor");
+  for (size_t ch = 0; ch < 128; ++ch) {
+    outData[ch] = genScan{}(ohN, vfatMask, ch, useCalPulse, currentPulse, calScaleFactor, nevts, dacMin, dacMax, dacStep, scanReg, useUltra, useExtTrig);
+  }
+  return outData;
+}
 
-    confCalPulseLocal(&la, ohN, mask, ch, toggleOn, currentPulse, calScaleFactor);
-    LOGGER->log_message(LogManager::DEBUG, stdsprintf("Finished configuring the calibration pulse."));
+std::map<uint32_t, uint32_t> calibration::sbitRateScan::operator()(const uint16_t &ohN,
+                                                                   const uint32_t &vfatMask,
+                                                                   const uint8_t &ch,
+                                                                   const uint16_t &dacMin,
+                                                                   const uint16_t &dacMax,
+                                                                   const uint16_t &dacStep,
+                                                                   const std::string &scanReg,
+                                                                   const uint32_t &waitTime,
+                                                                   const bool &invertVFATPos) const
+{
+  std::map<uint32_t, uint32_t> outData;
+  if (amc::fw_version_check("s-bit Rate Scan") < 3) {
+    // LOG4CPLUS_WARN(logger, "V2b electronics are not supported [[deprecated]]");
+    throw std::runtime_error("V2b electronics are not supported [[deprecated]]");
+  }
 
-    rtxn.abort();
+  // Hard code possible vfatMask values and how they map to vfatN
+  const std::unordered_map<uint32_t,uint32_t> vfatMask2vfatN {
+    {0xfffffe,  0}, {0xfffffd,  1}, {0xfffffb,  2}, {0xfffff7,  3},
+    {0xffffef,  4}, {0xffffdf,  5}, {0xffffbf,  6}, {0xffff7f,  7},
+    {0xfffeff,  8}, {0xfffdff,  9}, {0xfffbff, 10}, {0xfff7ff, 11},
+    {0xffefff, 12}, {0xffdfff, 13}, {0xffbfff, 14}, {0xff7fff, 15},
+    {0xfeffff, 16}, {0xfdffff, 17}, {0xfbffff, 18}, {0xf7ffff, 19},
+    {0xefffff, 20}, {0xdfffff, 21}, {0xbfffff, 22}, {0x7fffff, 23}
+  };
+
+  // Determine vfatN based on input vfatMask
+  auto const&& vfatNptr = vfatMask2vfatN.find(vfatMask);
+  if (vfatNptr == vfatMask2vfatN.end()) {
+    std::stringstream errmsg;
+    errmsg << "Input vfatMask: 0x"
+           << std::hex << std::setw(6) << std::setfill('0') << vfatMask << std::dec
+           << "not recgonized. Please make sure all but one VFAT is unmasked and then try again";
+    LOG4CPLUS_ERROR(logger, errmsg.str());
+    throw std::runtime_error(errmsg.str());
+  }
+  const uint32_t vfatN     = (invertVFATPos) ? 23 - vfatNptr->second : vfatNptr->second;
+  const uint32_t goodVFATs = vfat3::vfatSyncCheck{}(ohN);
+  if (!((goodVFATs >> vfatN) & 0x1)) {
+    std::stringstream errmsg;
+    errmsg << "The requested VFAT is not sync'd: "
+           << "goodVFATs: 0x"       << std::hex << std::setw(8) << std::setfill('0') << goodVFATs << std::dec
+           << "\t requested VFAT: " << vfatN
+           << "\tvfatMask: 0x"      << std::hex << std::setw(8) << std::setfill('0') << vfatMask << std::dec;
+    throw std::runtime_error(errmsg.str());
+  }
+
+  // If ch!=128 store the original channel mask settings
+  // Then mask all other channels except for channel ch
+  std::unordered_map<uint32_t, uint32_t> map_chanOrigMask;
+  if (ch != 128)
+    map_chanOrigMask = setSingleChanMask(ohN,vfatN,ch);
+
+  const uint32_t ohTrigRateAddr = utils::getAddress("GEM_AMC.TRIGGER.OH" + std::to_string(ohN) + ".TRIGGER_RATE");
+
+  // Store the original OH VFAT mask, and then reset it
+  const std::string regBase = "GEM_AMC.OH.OH" + std::to_string(ohN);
+  const uint32_t ohVFATMaskAddr = utils::getAddress(regBase + ".FPGA.TRIG.CTRL.VFAT_MASK");
+  const uint32_t vfatMaskOrig   = utils::readRawAddress(ohVFATMaskAddr);
+  utils::writeRawAddress(ohVFATMaskAddr, vfatMask);
+
+  utils::writeReg("GEM_AMC.GEM_SYSTEM.VFAT3.SC_ONLY_MODE", 0x0);
+
+  // Loop from dacMin to dacMax in steps of dacStep
+  for (uint32_t dacVal = dacMin; dacVal <= dacMax; dacVal += dacStep) {
+    utils::writeReg(regBase + ".GEB.VFAT" + std::to_string(vfatN) + ".CFG_" + scanReg, dacVal);
+    std::this_thread::sleep_for(std::chrono::milliseconds(waitTime));
+    outData[dacVal] = utils::readRawAddress(ohTrigRateAddr);
+  }
+
+  // Restore the original channel masks if specific channel was requested
+  if (ch != 128)
+    applyChanMask(map_chanOrigMask);
+
+  // Restore the original vfatMask
+  utils::writeRawAddress(ohVFATMaskAddr, vfatMaskOrig);
+
+  return outData;
+}
+
+std::map<uint32_t, std::vector<uint32_t>> calibration::sbitRateScanParallel::operator()(const uint8_t &ch,
+                                                                                        const uint16_t &dacMin,
+                                                                                        const uint16_t &dacMax,
+                                                                                        const uint16_t &dacStep,
+                                                                                        const std::string &scanReg,
+                                                                                        const uint16_t &ohMask,
+                                                                                        const uint32_t &waitTime) const
+{
+  if (ohMask > 0xfff) {
+    std::stringstream errmsg;
+    errmsg << "sbitRateScanParallel supports only up to 12 OptoHybrids per CTP7"; // FIXME GE1/1 CTP7 specific
+    LOG4CPLUS_ERROR(logger, errmsg.str());
+    throw std::runtime_error(errmsg.str());
+  }
+
+  std::map<uint32_t, std::vector<uint32_t>> outData;
+
+  uint32_t vfatmask[amc::OH_PER_AMC] = {0};
+  std::unordered_map<uint32_t, uint32_t> origVFATmasks[amc::OH_PER_AMC][oh::VFATS_PER_OH];
+  switch (amc::fw_version_check("s-bit Rate Scan")) {
+  case 3:
+    {
+      for (size_t ohN = 0; ohN < amc::OH_PER_AMC; ++ohN) {
+        if ((ohMask >> ohN) & 0x1) {
+          vfatmask[ohN] = amc::getOHVFATMask{}(ohN);
+          LOG4CPLUS_INFO(logger, "VFAT Mask for OH" << ohN << " Determined to be 0x"
+                         << std::hex << std::setw(8) << std::setfill('0') << vfatmask[ohN] << std::dec);
+
+          // If ch!=128 store the original channel mask settings
+          if (ch != 128) {
+            // Then mask all other channels except for channel ch
+            const uint32_t notmask = ~vfatmask[ohN] & 0xffffff;
+            for (size_t vfat = 0; vfat < oh::VFATS_PER_OH; ++vfat) {
+              if (!((notmask >> vfat) & 0x1))
+                continue;
+              origVFATmasks[ohN][vfat] = setSingleChanMask(ohN,vfat,ch);
+            }
+          }
+        }
+      }
+
+      // Get the s-bit Rate Monitor Address
+      uint32_t ohTrigRateAddr[amc::OH_PER_AMC][oh::VFATS_PER_OH + 1];
+      for (uint16_t ohN = 0; ohN < amc::OH_PER_AMC; ++ohN) {
+        if ((ohMask >> ohN) & 0x1) {
+          const std::string regName = "GEM_AMC.TRIGGER.OH" + std::to_string(ohN) + ".TRIGGER_RATE";
+          ohTrigRateAddr[ohN][oh::VFATS_PER_OH] = utils::getAddress(regName);
+          for (size_t vfat = 0; vfat < oh::VFATS_PER_OH; ++vfat) {
+            const std::string vfatRegName = "GEM_AMC.OH.OH" + std::to_string(ohN) + ".FPGA.TRIG.CNT.VFAT" + std::to_string(vfat) + "_SBITS";
+            ohTrigRateAddr[ohN][vfat] = utils::getAddress(vfatRegName);
+          }
+        }
+      }
+
+      // Take the VFATs out of slow control only mode
+      utils::writeReg("GEM_AMC.GEM_SYSTEM.VFAT3.SC_ONLY_MODE", 0x0);
+
+      std::unordered_map<uint32_t,uint32_t> map_origSBITPersist;
+      std::unordered_map<uint32_t,uint32_t> map_origSBITTimeMax;
+      for (uint16_t ohN = 0; ohN < amc::OH_PER_AMC; ++ohN) {
+        if ((ohMask >> ohN) & 0x1) {
+          const std::string regBase = "GEM_AMC.OH.OH" + std::to_string(ohN) + ".FPGA.TRIG.CNT.SBIT_CNT_";
+          map_origSBITPersist[ohN] = utils::readReg(regBase + "PERSIST");
+          map_origSBITTimeMax[ohN] = utils::readReg(regBase + "TIME_MAX");
+          // reset all counters after SBIT_CNT_TIME_MAX
+          utils::writeReg(regBase + "PERSIST", 0x0);
+          // count for a number of BX's specified by waitTime
+          utils::writeReg(regBase + "TIME_MAX", static_cast<uint32_t>(0x02638e98*waitTime));
+        }
+      }
+
+      for (uint32_t dacVal = dacMin; dacVal <= dacMax; dacVal += dacStep) {
+        LOG4CPLUS_INFO(logger, "Setting " << scanReg << " to " << dacVal
+                       << " for all OptoHybrids in 0x"
+                       << std::hex << std::setw(3) << std::setfill('0') << ohMask << std::dec);
+
+        // Set the scan register value
+        for (uint16_t ohN = 0; ohN < amc::OH_PER_AMC; ++ohN) {
+          if ((ohMask >> ohN) & 0x1) {
+            const uint32_t notmask = ~vfatmask[ohN] & 0xffffff;
+            const std::string regBase = "GEM_AMC.OH.OH" + std::to_string(ohN) + ".GEB.VFAT";
+            for (size_t vfat = 0; vfat < oh::VFATS_PER_OH; ++vfat) {
+              if (!((notmask >> vfat) & 0x1))
+                continue;
+              utils::writeReg(regBase + std::to_string(vfat) + ".CFG_" + scanReg, dacVal);
+            }
+          }
+        }
+
+        // Reset the counters
+        for (size_t ohN = 0; ohN < amc::OH_PER_AMC; ++ohN) {
+          if ((ohMask >> ohN) & 0x1) {
+            utils::writeReg("GEM_AMC.OH.OH" + std::to_string(ohN) + ".FPGA.TRIG.CNT.RESET", 0x1);
+          }
+        }
+
+        std::this_thread::sleep_for(std::chrono::seconds(waitTime));
+
+        // Read the counters
+        for (size_t ohN = 0; ohN < amc::OH_PER_AMC; ++ohN) {
+          if ((ohMask >> ohN) & 0x1) {
+            const uint32_t notmask = ~vfatmask[ohN] & 0xffffff;
+            for (size_t vfat = 0; vfat < oh::VFATS_PER_OH; ++vfat) {
+              if (!((notmask >> vfat) & 0x1)) {
+                outData[dacVal].push_back(0x0);
+              } else {
+                outData[dacVal].push_back(utils::readRawAddress(ohTrigRateAddr[ohN][vfat]));
+              }
+            }
+            outData[dacVal].push_back(utils::readRawAddress(ohTrigRateAddr[ohN][oh::VFATS_PER_OH]));
+          }
+        }
+      }
+
+      // Restore the original s-bit counter persist setting
+      for (size_t ohN = 0; ohN < amc::OH_PER_AMC; ++ohN) {
+        if ((ohMask >> ohN) & 0x1) {
+          const std::string regBase = "GEM_AMC.OH.OH" + std::to_string(ohN) + ".FPGA.TRIG.CNT.SBIT_CNT_";
+          utils::writeReg(regBase + "PERSIST", map_origSBITPersist[ohN]);
+          utils::writeReg(regBase + "MAX",     map_origSBITTimeMax[ohN]);
+        }
+      }
+
+      // Restore the original channel masks if specific channel was requested
+      if (ch != 128) {
+        for (size_t ohN = 0; ohN < amc::OH_PER_AMC; ++ohN) {
+          if ((ohMask >> ohN) & 0x1) {
+            const uint32_t notmask = ~vfatmask[ohN] & 0xffffff;
+            for (size_t vfat = 0; vfat < oh::VFATS_PER_OH; ++vfat) {
+              if (!((notmask >> vfat) & 0x1))
+                continue;
+              applyChanMask(origVFATmasks[ohN][vfat]);
+            }
+          }
+        }
+      }
+      break;
+    }
+  default:
+    const std::string errmsg = "sbitRateScanParallel is only supported in V3 electronics";
+    LOG4CPLUS_ERROR(logger, errmsg);
+    throw std::runtime_error(errmsg);
+  }
+
+  return outData;
+}
+
+std::vector<uint32_t> calibration::checkSbitMappingWithCalPulse::operator()(const uint16_t &ohN,
+                                                                      const uint32_t &vfatN,
+                                                                      const uint32_t &vfatMask,
+                                                                      const bool &useCalPulse,
+                                                                      const bool &currentPulse,
+                                                                      const uint32_t &calScaleFactor,
+                                                                      const uint32_t &nevts,
+                                                                      const uint32_t &L1Ainterval,
+                                                                      const uint32_t &pulseDelay) const
+{
+  if (amc::fw_version_check("checkSbitMappingWithCalPulse") < 3) {
+    const std::string errmsg = "checkSbitMappingWithCalPulse is only supported in V3 electronics";
+    LOG4CPLUS_ERROR(logger, errmsg);
+    throw std::runtime_error(errmsg);
+  }
+
+  const uint32_t notmask   = ~vfatMask & 0xffffff;
+  const uint32_t goodVFATs = vfat3::vfatSyncCheck{}(ohN);
+  if ((notmask & goodVFATs) != notmask) {
+    std::stringstream errmsg;
+    errmsg << "One of the unmasked VFATs is not sync'd: "
+           << "goodVFATs: 0x" << std::hex << std::setw(8) << std::setfill('0') << goodVFATs << std::dec
+           << "\tnotmask: 0x" << std::hex << std::setw(8) << std::setfill('0') << notmask << std::dec;
+    throw std::runtime_error(errmsg.str());
+  } else if (currentPulse && calScaleFactor > 3) {
+    std::stringstream errmsg;
+    errmsg << "Bad value for CFG_CAL_FS: 0x"
+           << std::hex << calScaleFactor << std::dec
+           << ". Possible values are {0b00, 0b01, 0b10, 0b11}";
+    throw std::runtime_error(errmsg.str());
+  }
+
+  std::vector<uint32_t> outData;
+
+  // Get current channel register data, mask all channels and disable calpulse
+  auto const chanRegData_orig = vfat3::getChannelRegistersVFAT3{}(ohN, vfatMask);
+  std::vector<uint32_t> chanRegData_tmp(oh::CHANNELS_PER_OH);
+  for (size_t idx = 0; idx < oh::CHANNELS_PER_OH; ++idx) {
+    chanRegData_tmp[idx]=chanRegData_orig[idx]+(0x1 << 14); // set channel mask to true
+    chanRegData_tmp[idx]=chanRegData_tmp[idx]-(0x1 << 15);  // disable calpulse
+  }
+  vfat3::setChannelRegistersVFAT3Simple{}(ohN, chanRegData_tmp, vfatMask);
+
+  // Setup TTC Generator
+  ttcGenConf{}(ohN, 0, 0, pulseDelay, L1Ainterval, nevts, true);
+  utils::writeReg("GEM_AMC.TTC.GENERATOR.SINGLE_RESYNC", 0x1);
+  utils::writeReg("GEM_AMC.TTC.GENERATOR.CYCLIC_L1A_COUNT", 0x1); // One pulse at a time
+  uint32_t addrTtcStart = utils::getAddress("GEM_AMC.TTC.GENERATOR.CYCLIC_START");
+
+  // Set all chips out of run mode
+  oh::broadcastWrite{}(ohN, "CFG_RUN", 0x0, vfatMask);
+
+  // Take the VFATs out of slow control only mode
+  utils::writeReg("GEM_AMC.GEM_SYSTEM.VFAT3.SC_ONLY_MODE", 0x0);
+
+  // Setup the s-bit monitor
+  const uint32_t nclusters = 8;
+  utils::writeReg("GEM_AMC.TRIGGER.SBIT_MONITOR.OH_SELECT", ohN);
+  const uint32_t addrSbitMonReset = utils::getAddress("GEM_AMC.TRIGGER.SBIT_MONITOR.RESET");
+  uint32_t addrSbitCluster[nclusters];
+  for (size_t iCluster = 0; iCluster < nclusters; ++iCluster) {
+    addrSbitCluster[iCluster] = utils::getAddress("GEM_AMC.TRIGGER.SBIT_MONITOR.CLUSTER" + std::to_string(iCluster));
+  }
+
+  if (!((notmask >> vfatN) & 0x1)) {
+    std::stringstream errmsg;
+    errmsg << "The VFAT of interest " << vfatN << " should not be part of the vfatMask 0x"
+           << std::hex << std::setw(8) << std::setfill('0') << vfatMask << std::dec;
+    throw std::runtime_error(errmsg.str());
+  }
+
+  const std::string regBase = "GEM_AMC.OH.OH" + std::to_string(ohN);
+  const std::string vfatRegBase = regBase + ".GEB.VFAT" + std::to_string(vfatN);
+  // mask all other vfats from trigger
+  utils::writeReg(regBase + ".FPGA.TRIG.CTRL.VFAT_MASK", 0xffffff&~(0x1<<(vfatN)));
+
+  // Place this vfat into run mode
+  utils::writeReg(vfatRegBase + ".CFG_RUN", 0x1);
+
+  for (size_t chan = 0; chan < 128; ++chan) {
+    utils::writeReg(vfatRegBase + ".VFAT_CHANNELS.CHANNEL" + std::to_string(chan) + ".MASK", 0x0);
+
+    // Turn on the calpulse for this channel
+    try {
+      confCalPulse{}(ohN, ~((0x1)<<vfatN) & 0xffffff, chan, useCalPulse, currentPulse, calScaleFactor);
+    } catch (const std::runtime_error &e) {
+      std::stringstream errmsg;
+      errmsg << "Unable to configure CalPulse " << useCalPulse
+             << " for " << ohN << " mask 0x"
+             << std::hex << std::setw(8) << std::setfill('0') << (~(0x1<<vfatN)&0xffffff) << std::dec
+             << "channel " << chan
+             << ". Caught " << e.what();
+      throw std::runtime_error(errmsg.str());
+      // Calibration pulse is not configured correctly
+    }
+
+    // Start Pulsing
+    for (size_t iPulse = 0; iPulse < nevts; ++iPulse) {
+      // Reset monitors
+      utils::writeRawAddress(addrSbitMonReset, 0x1);
+
+      // Start the TTC Generator
+      if (useCalPulse) {
+        utils::writeRawAddress(addrTtcStart, 0x1);
+      }
+
+      // Sleep for 200 us + pulseDelay * 25 ns * (0.001 us / ns)
+      std::this_thread::sleep_for(std::chrono::microseconds(200+static_cast<int>(ceil(pulseDelay*25*0.001))));
+
+      // Check clusers
+      for (size_t cluster = 0; cluster < nclusters; ++cluster) {
+        // bits [10:0] is the address of the cluster
+        // bits [14:12] is the cluster size
+        // bits 15 and 11 are not used
+        const uint32_t thisCluster = utils::readRawAddress(addrSbitCluster[cluster]);
+        const uint32_t clusterSize = (thisCluster >> 12) & 0x7;
+        const uint32_t sbitAddress = (thisCluster & 0x7ff);
+        const bool isValid = (sbitAddress < oh::SBITS_PER_OH); // Possible values are [0,(oh::SBITS_PER_OH)-1]
+        const int vfatObserved = 7-static_cast<int>(sbitAddress/192)+static_cast<int>((sbitAddress%192)/64)*8;
+        const int sbitObserved = sbitAddress % 64;
+
+        outData.push_back(((clusterSize&0x7)<<27)
+                          + ((isValid&0x1)<<26)
+                          + ((vfatObserved&0x1f)<<21)
+                          + ((vfatN&0x1f)<<16)
+                          + ((sbitObserved&0xff)<<8)
+                          + (chan&0xff));
+
+        if (isValid) {
+          LOG4CPLUS_INFO(logger, "valid sbit data: useCalPulse " << useCalPulse
+                         << "; thisClstr 0x" << std::hex << thisCluster << std::dec
+                         << "; clstrSize 0x" << std::hex << clusterSize << std::dec
+                         << "; sbitAddr 0x"  << std::hex << sbitAddress << std::dec
+                         << "; isValid 0x"   << std::hex << isValid << std::dec
+                         << "; vfatN "       << vfatN
+                         << "; vfatObs "     << vfatObserved
+                         << "; chan "        << chan
+                         << "; sbitObs "     << sbitObserved
+                         );
+        }
+      }
+    }
+
+    // Turn off the calpulse for this channel
+    try {
+      confCalPulse{}(ohN, (~((0x1)<<vfatN)&0xffffff), chan, false, currentPulse, calScaleFactor);
+    } catch (const std::runtime_error &e) {
+      std::stringstream errmsg;
+      errmsg << "Unable to configure CalPulse OFF for OH" << ohN << " with mask 0x"
+             << std::hex << std::setw(6) << std::setfill('0') << (~((0x1)<<vfatN)&0xffffff) << std::dec
+             << " channel " << chan
+             << ". Caught " << e.what();
+      throw std::runtime_error(errmsg.str());
+      // Calibration pulse is not configured correctly
+    }
+
+    // mask this channel
+    utils::writeReg("GEM_AMC.OH.OH" + std::to_string(ohN)
+                    + ".GEB.VFAT" + std::to_string(vfatN)
+                    + ".VFAT_CHANNELS.CHANNEL" + std::to_string(chan) + ".MASK", 0x1);
+  }
+
+  utils::writeReg(vfatRegBase + ".CFG_RUN", 0x0);
+
+  ttcGenToggle{}(ohN, false);
+
+  // Return channel register settings to their original values
+  vfat3::setChannelRegistersVFAT3Simple{}(ohN, chanRegData_orig, vfatMask);
+
+  // Set trigger vfat mask for this OH back to 0
+  utils::writeReg(regBase + "i.FPGA.TRIG.CTRL.VFAT_MASK", 0x0);
+
+  return outData;
+}
+
+std::map<std::string, std::vector<uint32_t>> calibration::checkSbitRateWithCalPulse::operator()(const uint16_t &ohN,
+                                                                                                const uint32_t &vfatN,
+                                                                                                const uint32_t &vfatMask,
+                                                                                                const bool &useCalPulse,
+                                                                                                const bool &currentPulse,
+                                                                                                const uint32_t &calScaleFactor,
+                                                                                                const uint32_t &waitTime,
+                                                                                                const uint32_t &pulseRate,
+                                                                                                const uint32_t &pulseDelay) const
+{
+  if (amc::fw_version_check("checkSbitRateWithCalPulse") < 3) {
+    const std::string errmsg = "checkSbitRateWithCalPulse is only supported in V3 electronics";
+    LOG4CPLUS_ERROR(logger, errmsg);
+    throw std::runtime_error(errmsg);
+  }
+
+  const uint32_t notmask   = ~vfatMask & 0xffffff;
+  const uint32_t goodVFATs = vfat3::vfatSyncCheck{}(ohN);
+  if ((notmask & goodVFATs) != notmask) {
+    std::stringstream errmsg;
+    errmsg << "One of the unmasked VFATs is not sync'd: "
+           << "goodVFATs: 0x" << std::hex << std::setw(8) << std::setfill('0') << goodVFATs << std::dec
+           << "\tnotmask: 0x" << std::hex << std::setw(8) << std::setfill('0') << notmask << std::dec;
+    throw std::runtime_error(errmsg.str());
+  } else if (currentPulse && calScaleFactor > 3) {
+    std::stringstream errmsg;
+    errmsg << "Bad value for CFG_CAL_FS: 0x"
+           << std::hex << calScaleFactor << std::dec
+           << ". Possible values are {0b00, 0b01, 0b10, 0b11}";
+    throw std::runtime_error(errmsg.str());
+  }
+
+  std::map<std::string, std::vector<uint32_t>> outData;
+
+  // Get current channel register data, mask all channels and disable calpulse
+  LOG4CPLUS_INFO(logger, "Storing VFAT3 channel registers for ohN " << ohN);
+  auto const chanRegData_orig = vfat3::getChannelRegistersVFAT3{}(ohN, vfatMask);
+  std::vector<uint32_t> chanRegData_tmp(oh::CHANNELS_PER_OH);
+  LOG4CPLUS_INFO(logger, "Masking all channels and disabling CalPulse for VFATs on ohN " << ohN);
+
+  for (size_t idx = 0; idx < oh::CHANNELS_PER_OH; ++idx) {
+    chanRegData_tmp.at(idx) = chanRegData_orig.at(idx)+(0x1 << 14); // set channel mask to true
+    chanRegData_tmp.at(idx) = chanRegData_tmp.at(idx) -(0x1 << 15); // disable calpulse
+  }
+  vfat3::setChannelRegistersVFAT3Simple{}(ohN, chanRegData_tmp, vfatMask);
+
+  // Setup TTC Generator
+  uint32_t L1Ainterval = 0;
+  if (pulseRate > 0) {
+    L1Ainterval = int(40079000/pulseRate);
+  } else {
+    L1Ainterval = 0;
+  }
+
+  const uint32_t addrTTCReset = utils::getAddress("GEM_AMC.TTC.GENERATOR.RESET");
+  const uint32_t addrTTCStart = utils::getAddress("GEM_AMC.TTC.GENERATOR.CYCLIC_START");
+
+  const std::string regBase     = "GEM_AMC.OH.OH" + std::to_string(ohN);
+  const std::string vfatRegBase = regBase + ".GEB.VFAT" + std::to_string(vfatN);
+
+  // Get Trigger addresses
+  uint32_t ohTrigRateAddr[oh::VFATS_PER_OH + 2];
+  // idx 0->oh::VFATS_PER_OH VFAT counters; idx oh::VFATS_PER_OH+1 - rate measured by OH FPGA; last idx - rate measured by CTP7
+  for (size_t vfat = 0; vfat < oh::VFATS_PER_OH; ++vfat) {
+    ohTrigRateAddr[vfat] = utils::getAddress(regBase + ".FPGA.TRIG.CNT.VFAT" + std::to_string(vfat) + "_SBITS");
+  }
+  ohTrigRateAddr[oh::VFATS_PER_OH] = utils::getAddress(regBase + ".FPGA.TRIG.CNT.CLUSTER_COUNT");
+  ohTrigRateAddr[oh::VFATS_PER_OH + 1] = utils::getAddress("GEM_AMC.TRIGGER.OH" + std::to_string(ohN) + ".TRIGGER_RATE");
+  const uint32_t addTrgCntResetOH   = utils::getAddress(regBase + ".FPGA.TRIG.CNT.RESET");
+  const uint32_t addTrgCntResetCTP7 = utils::getAddress("GEM_AMC.TRIGGER.CTRL.CNT_RESET");
+
+  // Set all chips out of run mode
+  LOG4CPLUS_INFO(logger, "Writing CFG_RUN to 0x0 for all VFATs on OH" << ohN
+                 << " using vfatMask 0x" << std::hex << std::setw(8) << std::setfill('0') << vfatMask << std::dec);
+  oh::broadcastWrite{}(ohN, "CFG_RUN", 0x0, vfatMask);
+
+  // Take the VFATs out of slow control only mode
+  LOG4CPLUS_INFO(logger, "Taking VFAT3s out of slow control only mode");
+  utils::writeReg("GEM_AMC.GEM_SYSTEM.VFAT3.SC_ONLY_MODE", 0x0);
+
+  // Prep the s-bit counters
+  LOG4CPLUS_INFO(logger, "Preping s-bit counters for OH" << ohN);
+  utils::writeReg(regBase + ".FPGA.TRIG.CNT.SBIT_CNT_PERSIST", 0x0); // reset all counters after SBIT_CNT_TIME_MAX
+  utils::writeReg(regBase + ".FPGA.TRIG.CNT.SBIT_CNT_TIME_MAX", uint32_t(0x02638e98*waitTime/1000.));
+  // count for a number of BX's specified by waitTime
+
+  if (!((notmask >> vfatN) & 0x1)) {
+    std::stringstream errmsg;
+    errmsg << "The vfat of interest "
+           << vfatN << " should not be part of the vfats to be masked: 0x"
+           << std::hex << std::setw(8) << std::setfill('0') << vfatMask << std::dec;
+    LOG4CPLUS_ERROR(logger, errmsg.str());
+    throw std::runtime_error(errmsg.str());
+  }
+
+  const uint32_t mask = (~(0x1<<vfatN))&0xffffff;
+  LOG4CPLUS_INFO(logger, "Masking VFATs 0x"
+                 << std::hex << std::setw(8) << std::setfill('0') << mask << std::dec
+                 << " from trigger in ohN " << ohN);
+  utils::writeReg(regBase + ".FPGA.TRIG.CTRL.VFAT_MASK", mask);
+
+  LOG4CPLUS_INFO(logger, "Placing VFAT" << vfatN << " on OH" << ohN << " in run mode");
+  utils::writeReg(regBase + ".GEB.VFAT" + std::to_string(vfatN) + ".CFG_RUN", 0x1);
+
+  LOG4CPLUS_INFO(logger, "Looping over all channels of VFAT" << vfatN << " on OH" << ohN);
+  for (size_t chan = 0; chan < 128; ++chan) {
+    const std::string chRegBase = vfatRegBase + ".VFAT_CHANNELS.CHANNEL" + std::to_string(chan);
+    LOG4CPLUS_INFO(logger, "Unmasking channel " << chan << " on VFAT" << vfatN << " of OH" << ohN);
+    utils::writeReg(chRegBase + ".MASK", 0x0);
+
+    LOG4CPLUS_INFO(logger, "Enabling CalPulse for channel " << chan << " on VFAT" << vfatN << " of OH" << ohN);
+    try {
+      confCalPulse{}(ohN, mask, chan, useCalPulse, currentPulse, calScaleFactor);
+    } catch (const std::runtime_error &e) { // FIXME proper exception handling
+      std::stringstream errmsg;
+      errmsg << "Unable to configure CalPulse " << useCalPulse << " for " << ohN
+             << " mask 0x" << std::hex << std::setw(8) << std::setfill('0') << mask << std::dec
+             << " channel " << chan
+             << ". Caught " << e.what();
+      throw std::runtime_error(errmsg.str());
+      // Calibration pulse is not configured correctly
+    }
+
+    // Reset counters
+    LOG4CPLUS_INFO(logger, "Reseting trigger counters on OH & CTP7");
+    utils::writeRawAddress(addTrgCntResetOH,   0x1);
+    utils::writeRawAddress(addTrgCntResetCTP7, 0x1);
+
+    // Start the TTC Generator
+    LOG4CPLUS_INFO(logger, "Configuring TTC Generator to use OH" << ohN
+                   << " with pulse delay " << pulseDelay
+                   << " and L1Ainterval " << L1Ainterval);
+    ttcGenConf{}(ohN, 0, 0, pulseDelay, L1Ainterval, 0, true);
+    utils::writeReg("GEM_AMC.TTC.GENERATOR.SINGLE_RESYNC",    0x1);
+    utils::writeReg("GEM_AMC.TTC.GENERATOR.CYCLIC_L1A_COUNT", 0x0);
+    LOG4CPLUS_INFO(logger, "Starting TTC Generator");
+    utils::writeRawAddress(addrTTCStart, 0x1);
+
+    // Sleep for waitTime of milliseconds
+    std::this_thread::sleep_for(std::chrono::milliseconds(waitTime));
+
+    // Read All Trigger Registers
+    LOG4CPLUS_INFO(logger, "Reading trigger counters");
+    outData["CTP7"].push_back(utils::readRawAddress(ohTrigRateAddr[oh::VFATS_PER_OH + 1]));
+    outData["FPGA"].push_back(utils::readRawAddress(ohTrigRateAddr[oh::VFATS_PER_OH]));  // *waitTime/1000.);
+    outData["VFAT"].push_back(utils::readRawAddress(ohTrigRateAddr[vfatN]));             // *waitTime/1000.;
+
+    // Reset the TTC Generator
+    LOG4CPLUS_INFO(logger, "Stopping TTC Generator");
+    utils::writeRawAddress(addrTTCReset, 0x1);
+
+    // Turn off the calpulse for this channel
+    LOG4CPLUS_INFO(logger, "Disabling CalPulse for channel " << chan
+                   << " on VFAT" << vfatN << " of OH" << ohN);
+    const uint32_t mask = (~(0x1<<vfatN))&0xffffff;
+    try {
+      confCalPulse{}(ohN, mask, chan, false, currentPulse, calScaleFactor);
+    } catch (const std::runtime_error &e) { // FIXME proper exception handling
+      std::stringstream errmsg;
+      errmsg << "Unable to disable CalPulse for " << ohN
+             << " mask 0x" << std::hex << std::setw(8) << std::setfill('0') << mask << std::dec
+             << "channel " << chan
+             << ". Caught " << e.what();
+      throw std::runtime_error(errmsg.str());
+      // Calibration pulse is not configured correctly
+    }
+
+    LOG4CPLUS_INFO(logger, "Masking channel " << chan << " on VFAT" << vfatN << " of OH" << ohN);
+    utils::writeReg(chRegBase + std::to_string(chan) + ".MASK", 0x1);
+  }
+
+  // Place this vfat out of run mode FIXME why??
+  LOG4CPLUS_INFO(logger, "Finished looping over all channels. Taking VFAT" << vfatN << " on OH" << ohN << " out of run mode");
+  utils::writeReg(regBase + ".GEB.VFAT" + std::to_string(vfatN) + ".CFG_RUN", 0x0);
+
+  LOG4CPLUS_INFO(logger, "Disabling TTC Generator");
+  ttcGenToggle{}(ohN, false);
+
+  LOG4CPLUS_INFO(logger, "Reverting VFAT3 channel registers for OH" << ohN << " to original values");
+  vfat3::setChannelRegistersVFAT3Simple{}(ohN, chanRegData_orig, vfatMask);
+
+  // Set trigger VFAT mask for this OH back to 0
+  LOG4CPLUS_INFO(logger, "Reverting GEM_AMC.OH.OH" << ohN << ".FPGA.TRIG.CTRL.VFAT_MASK to 0x0");
+  utils::writeReg(regBase + ".FPGA.TRIG.CTRL.VFAT_MASK", 0x0);
+
+  return outData;
+}
+
+std::vector<uint32_t> calibration::dacScan::operator()(const uint16_t &ohN,
+                                                       const uint16_t &dacSelect,
+                                                       const uint16_t &dacStep,
+                                                       const uint32_t &vfatMask,
+                                                       const bool &useExtRefADC) const
+{
+  if (amc::fw_version_check("dacScan") < 3) {
+    const std::string errmsg = "dacScan is only supported in V3 electronics";
+    LOG4CPLUS_ERROR(logger, errmsg);
+    throw std::runtime_error(errmsg);
+  }
+
+  if (calibration::vfat3DACAndSize.count(dacSelect) == 0) {
+    std::string errmsg = "Monitoring Select value " + std::to_string(dacSelect) + " not found, possible values are:\n";
+    for (auto const& iterDacSel : calibration::vfat3DACAndSize) {
+      errmsg+="\t" + std::to_string(iterDacSel.first) + "\t" + std::get<0>(iterDacSel.second) + "\n";
+    }
+    throw std::runtime_error(errmsg);
+  }
+
+  // Check which VFATs are sync'd
+  const uint32_t notmask   = (~vfatMask)&0xffffff;
+  const uint32_t goodVFATs = vfat3::vfatSyncCheck{}(ohN);
+  if ((notmask & goodVFATs) != notmask) {
+    std::stringstream errmsg;
+    errmsg << "One of the unmasked VFATs is not sync'd: "
+           << "goodVFATs: 0x" << std::hex << std::setw(8) << std::setfill('0') << goodVFATs << std::dec
+           << "\tnotmask: 0x" << std::hex << std::setw(8) << std::setfill('0') << notmask << std::dec;
+    throw std::runtime_error(errmsg.str());
+  }
+
+  // Determine the addresses
+  auto && regName = std::get<0>(calibration::vfat3DACAndSize.at(dacSelect));
+  LOG4CPLUS_INFO(logger, "Scanning DAC: " << regName);
+  uint32_t adcAddr[oh::VFATS_PER_OH];
+  uint32_t adcCacheUpdateAddr[oh::VFATS_PER_OH];
+  bool foundADCCached = false;
+  for (size_t vfatN = 0; vfatN < oh::VFATS_PER_OH; ++vfatN) {
+    if (!((notmask >> vfatN) & 0x1))
+      continue;
+
+    std::string regBase = "GEM_AMC.OH.OH" + std::to_string(ohN) + ".GEB.VFAT" + std::to_string(vfatN);
+
+    if (useExtRefADC) {
+      // for backward compatibility, use ADC1 instead of ADC1_CACHED if it exists
+      foundADCCached = utils::regExists(regBase + ".ADC1_CACHED");
+      if (foundADCCached) {
+        adcAddr[vfatN]            = utils::getAddress(regBase + ".ADC1_CACHED");
+        adcCacheUpdateAddr[vfatN] = utils::getAddress(regBase + ".ADC1_UPDATE");
+      } else {
+        adcAddr[vfatN] = utils::getAddress(regBase + ".ADC1");
+      }
+    } else {
+      // for backward compatibility, use ADC0 instead of ADC0_CACHED if it exists
+      foundADCCached = utils::regExists(regBase + ".ADC0_CACHED");
+      if (foundADCCached) {
+        adcAddr[vfatN]            = utils::getAddress(regBase + ".ADC0_CACHED");
+        adcCacheUpdateAddr[vfatN] = utils::getAddress(regBase + ".ADC0_UPDATE");
+      } else {
+        adcAddr[vfatN] = utils::getAddress(regBase + ".ADC0");
+      }
+    }
+  }
+
+  // make the output container and correctly size it
+  const uint32_t dacMax = std::get<2>(calibration::vfat3DACAndSize.at(dacSelect));
+  const uint32_t dacMin = std::get<1>(calibration::vfat3DACAndSize.at(dacSelect));
+  const uint32_t nDacValues = (dacMax-dacMin+1)/dacStep;
+  std::vector<uint32_t> dacScanData(oh::VFATS_PER_OH*nDacValues);
+
+  // Block L1A's then take VFATs out of run mode FIXME why?
+  utils::writeReg("GEM_AMC.TTC.CTRL.L1A_ENABLE", 0x0);
+  oh::broadcastWrite{}(ohN, "CFG_RUN", 0x0, vfatMask);
+
+  // Configure the DAC Monitoring on all the VFATs
+  vfat3::configureVFAT3DACMonitor{}(ohN, vfatMask, dacSelect);
+
+  // Set the VFATs into run mode
+  utils::writeReg("GEM_AMC.GEM_SYSTEM.VFAT3.SC_ONLY_MODE", 0x0);
+  oh::broadcastWrite{}(ohN, "CFG_RUN", 0x1, vfatMask);
+  LOG4CPLUS_INFO(logger, "VFATs not in 0x"
+                 << std::hex << std::setw(8) << std::setfill('0') << vfatMask << std::dec
+                 << " were set to run mode");
+  std::this_thread::sleep_for(std::chrono::seconds(1));
+  // I noticed that DAC values behave weirdly immediately after VFAT is placed in run mode
+  // (probably voltage/current takes a moment to stabalize)
+
+  const uint32_t nReads = 100;
+  for (uint32_t dacVal = dacMin; dacVal <= dacMax; dacVal += dacStep) {
+    for (size_t vfatN = 0; vfatN < oh::VFATS_PER_OH; ++vfatN) {
+      if (!((notmask >> vfatN) & 0x1)) {
+        // Store word, but with adcVal = 0
+        // FIXME drawback of structure when it is redundant?
+        const uint32_t idx = vfatN*(dacMax-dacMin+1)/dacStep+(dacVal-dacMin)/dacStep;
+        dacScanData.at(idx) = ((ohN & 0xf) << 23) + ((vfatN & 0x1f) << 18) + (dacVal & 0xff);
+        // dacScanData.push_back(((ohN & 0xf) << 23) + ((vfatN & 0x1f) << 18) + (dacVal & 0xff));
+        continue;
+      } else {
+        std::string strDacReg = "GEM_AMC.OH.OH" + std::to_string(ohN) + ".GEB.VFAT" + std::to_string(vfatN) + "." + regName;
+        utils::writeReg(strDacReg, dacVal);
+        uint32_t adcVal = 0;
+        for (size_t i = 0; i < nReads; ++i) {
+          if (foundADCCached) {
+            // either reading or writing this register will trigger a cache update
+            utils::readRawAddress(adcCacheUpdateAddr[vfatN]);
+            // updating the cache takes 20 us, including a 50% safety factor
+            std::this_thread::sleep_for(std::chrono::microseconds(25));
+          }
+          adcVal += utils::readRawAddress(adcAddr[vfatN]);
+        }
+
+        adcVal = adcVal/nReads;
+
+        // FIXME drawback of structure when it is redundant?
+        const uint32_t idx = vfatN*(dacMax-dacMin+1)/dacStep+(dacVal-dacMin)/dacStep;
+        dacScanData.at(idx) = ((ohN & 0xf) << 23) + ((vfatN & 0x1f) << 18) + ((adcVal & 0x3ff) << 8) + (dacVal & 0xff);
+        // dacScanData.push_back(((ohN & 0xf) << 23) + ((vfatN & 0x1f) << 18) + ((adcVal & 0x3ff) << 8) + (dacVal & 0xff));
+      }
+    }
+  }
+
+  // Take the VFATs out of Run Mode
+  oh::broadcastWrite{}(ohN, "CFG_RUN", 0x0, vfatMask);
+
+  return dacScanData;
+}
+
+std::map<uint32_t, std::vector<uint32_t>> calibration::dacScanMultiLink::operator()(const uint16_t &ohMask,
+                                                                                    const uint16_t &dacSelect,
+                                                                                    const uint16_t &dacStep,
+                                                                                    const uint32_t &mask,
+                                                                                    const bool &useExtRefADC) const
+{
+  const uint32_t supOH = utils::readReg("GEM_AMC.GEM_SYSTEM.CONFIG.NUM_OF_OH");
+  if (ohMask > (0x1<<supOH))
+    LOG4CPLUS_WARN(logger, "Requested OptoHybrids (0x" << std::hex << std::setw(4) << std::setfill('0') << ohMask << std::dec
+                   << ") > NUM_OF_OH AMC register value ("<< supOH << "), request will be reset to register max");
+
+  std::map<uint32_t, std::vector<uint32_t>> outData;
+  for (size_t ohN = 0; ohN < supOH; ++ohN) {
+    std::vector<uint32_t> dacScanResults;
+
+    // If this OptoHybrid is masked skip it
+    if (!((ohMask >> ohN) & 0x1)) {
+      const uint32_t dacMax = std::get<2>(calibration::vfat3DACAndSize.at(dacSelect));
+      dacScanResults.assign((dacMax+1)*oh::VFATS_PER_OH/dacStep, 0xdeaddead);
+      outData[ohN] = dacScanResults;
+      continue;
+    }
+
+    LOG4CPLUS_INFO(logger, "Getting VFAT Mask for OH" << ohN);
+    const uint32_t vfatMask = amc::getOHVFATMask{}(ohN);
+
+    LOG4CPLUS_INFO(logger, "Performing DAC Scan for OH" << ohN);
+    outData[ohN] = dacScan{}(ohN, dacSelect, dacStep, vfatMask, useExtRefADC);
+
+    LOG4CPLUS_INFO(logger, "Finished DAC scan for OH" <<  ohN);
+  }
+
+  LOG4CPLUS_INFO(logger, "Finished DAC scans for OH Mask 0x"
+                 << std::hex << std::setw(3) << std::setfill('0') << ohMask << std::dec);
+
+  return outData;
 }
 
 extern "C" {
-    const char *module_version_key = "calibration_routines v1.0.1";
-    int module_activity_color = 4;
-    void module_init(ModuleManager *modmgr) {
-        initLogging();
+  const char *module_version_key = "calibration_routines v1.0.1";
+  const int module_activity_color = 4;
 
-        if (memhub_open(&memsvc) != 0) {
-            auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("main"));
-            LOG4CPLUS_ERROR(logger, LOG4CPLUS_TEXT("Unable to connect to memory service: ") << memsvc_get_last_error(memsvc));
-            LOG4CPLUS_ERROR(logger, "Unable to load module");
-            return; // Do not register our functions, we depend on memsvc.
-        }
+  void module_init(ModuleManager *modmgr)
+  {
+    utils::initLogging();
 
-        modmgr->register_method("calibration_routines", "checkSbitMappingWithCalPulse", checkSbitMappingWithCalPulse);
-        modmgr->register_method("calibration_routines", "checkSbitRateWithCalPulse", checkSbitRateWithCalPulse);
-        modmgr->register_method("calibration_routines", "dacScan", dacScan);
-        modmgr->register_method("calibration_routines", "dacScanMultiLink", dacScanMultiLink);
-        modmgr->register_method("calibration_routines", "genScan", genScan);
-        modmgr->register_method("calibration_routines", "genChannelScan", genChannelScan);
-        modmgr->register_method("calibration_routines", "sbitRateScan", sbitRateScan);
-        modmgr->register_method("calibration_routines", "ttcGenConf", ttcGenConf);
-        modmgr->register_method("calibration_routines", "ttcGenToggle", ttcGenToggle);
-        modmgr->register_method("calibration_routines", "confCalPulse", confCalPulse);
+    if (memhub_open(&memsvc) != 0) {
+      auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("main"));
+      LOG4CPLUS_ERROR(logger, "Unable to connect to memory service: " << memsvc_get_last_error(memsvc));
+      LOG4CPLUS_ERROR(logger, "Unable to load module");
+      return;
     }
+
+    xhal::common::rpc::registerMethod<calibration::confCalPulse>(modmgr);
+    xhal::common::rpc::registerMethod<calibration::dacMonConf>(modmgr);
+    xhal::common::rpc::registerMethod<calibration::ttcGenToggle>(modmgr);
+    xhal::common::rpc::registerMethod<calibration::ttcGenConf>(modmgr);
+    xhal::common::rpc::registerMethod<calibration::genScan>(modmgr);
+    xhal::common::rpc::registerMethod<calibration::genChannelScan>(modmgr);
+    xhal::common::rpc::registerMethod<calibration::sbitRateScan>(modmgr);
+    xhal::common::rpc::registerMethod<calibration::sbitRateScanParallel>(modmgr);
+    xhal::common::rpc::registerMethod<calibration::checkSbitMappingWithCalPulse>(modmgr);
+    xhal::common::rpc::registerMethod<calibration::checkSbitRateWithCalPulse>(modmgr);
+    xhal::common::rpc::registerMethod<calibration::dacScan>(modmgr);
+    xhal::common::rpc::registerMethod<calibration::dacScanMultiLink>(modmgr);
+  }
 }
