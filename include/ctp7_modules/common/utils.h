@@ -16,47 +16,6 @@
 #include <iomanip>
 #include <string>
 
-namespace xhal {
-  namespace common {
-    namespace rpc {
-      template<typename Message>
-      inline void serialize(Message &msg, int &value) {
-        msg & value;
-      }
-
-      template<typename Message>
-      inline void serialize(Message &msg, bool &value) {
-        msg & value;
-      }
-
-      template<typename Message>
-      inline void serialize(Message &msg, uint8_t &value) {
-        msg & value;
-      }
-
-      template<typename Message>
-      inline void serialize(Message &msg, uint16_t &value) {
-        msg & value;
-      }
-
-      template<typename Message>
-      inline void serialize(Message &msg, size_t &value) {
-        msg & value;
-      }
-
-      template<typename Message>
-      inline void serialize(Message &msg, float &value) {
-        msg & *(reinterpret_cast<uint32_t*>(&value));
-      }
-
-      /* template<typename Message> */
-      /* inline void serialize(Message &msg, double &value) { */
-      /*   msg & *(reinterpret_cast<uint32_t*>(&value)); */
-      /* } */
-    }
-  }
-}
-
 namespace utils {
 
     /*!
