@@ -40,7 +40,7 @@ std::string utils::serialize(xhal::common::utils::Node n)
   return node.str();
 }
 
-void initLogging()
+void utils::initLogging()
 {
     log4cplus::initialize();
 
@@ -621,7 +621,7 @@ extern "C" {
 
     void module_init(ModuleManager *modmgr)
     {
-        initLogging();
+        utils::initLogging();
 
         if (memhub_open(&memsvc) != 0) {
             auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("main"));

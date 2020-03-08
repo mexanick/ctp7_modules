@@ -19,7 +19,7 @@ namespace calibration {
   auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("logger"));
 }
 
-std::unordered_map<uint32_t, uint32_t> setSingleChanMask(const uint16_t ohN, const uint8_t vfatN, const uint8_t ch)
+std::unordered_map<uint32_t, uint32_t> calibration::setSingleChanMask(const uint8_t &ohN, const uint8_t &vfatN, const uint8_t &ch)
 {
   std::unordered_map<uint32_t, uint32_t> map_chanOrigMask;
   uint32_t chanMaskAddr;
@@ -37,7 +37,7 @@ std::unordered_map<uint32_t, uint32_t> setSingleChanMask(const uint16_t ohN, con
   return map_chanOrigMask;
 }
 
-void applyChanMask(std::unordered_map<uint32_t, uint32_t> chMasks)
+void calibration::applyChanMask(const std::unordered_map<uint32_t, uint32_t> &chMasks)
 {
   for (auto const& chMask : chMasks) {
     utils::writeRawAddress(chMask.first, chMask.second);
