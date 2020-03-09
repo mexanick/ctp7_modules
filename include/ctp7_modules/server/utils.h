@@ -200,7 +200,7 @@ namespace utils {
      *  \param \c breakOnFailure stop attempting to read regName before nReads is reached if a failed read occurs
      *  \param \c nReads number of times to attempt to read regName
      */
-    SlowCtrlErrCntVFAT repeatedRegRead(const std::string & regName, bool breakOnFailure=true, uint32_t nReads=1000);
+    SlowCtrlErrCntVFAT repeatedRegRead(const std::string & regName, const bool breakOnFailure=true, const uint32_t nReads=1000);
 
     /*!
      *  \brief Writes a value to a register. Register mask is applied. An \c std::runtime_error is thrown if the register cannot be read.
