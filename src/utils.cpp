@@ -194,7 +194,7 @@ uint32_t utils::getNumNonzeroBits(uint32_t value)
   return numNonzeroBits;
 }
 
-bool utils::regExists(const std::string &regName, lmdb::val *db_res)
+std::experimental::optional<std::string> utils::regExists(const std::string &regName)
 {
   auto env = lmdb::env::create();
   env.set_mapsize(utils::LMDB_SIZE);
@@ -206,26 +206,41 @@ bool utils::regExists(const std::string &regName, lmdb::val *db_res)
 
   auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("logger"));
 
-  lmdb::val key;
+  lmdb::val key, db_res;
   key.assign(regName.c_str());
-  if (db_res != nullptr) {
-    return dbi.get(rtxn, key, *db_res);
+  if (dbi.get(rtxn, key, db_res)) {
+    return std::string{db_res.data()};
   } else {
-    lmdb::val db_res_loc;
-    return dbi.get(rtxn, key, db_res_loc);
+    return {};
   }
+}
+
+uint32_t utils::getAddress(const std::string &regName)
+{
+  auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("logger"));
+
+  auto db_res = regExists(regName);
+  uint32_t raddr = 0x0;
+  if (db_res) {
+    const std::vector<std::string> tmp = split(*db_res,'|');
+    raddr = stoull(tmp[0], nullptr, 16);
+  } else {
+    std::stringstream errmsg;
+    errmsg << "Key: " << regName << " was NOT found";
+    LOG4CPLUS_ERROR(logger, errmsg.str());
+    throw std::runtime_error(errmsg.str());
+  }
+  return raddr;
 }
 
 uint32_t utils::getMask(const std::string &regName)
 {
   auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("logger"));
 
-  lmdb::val db_res;
+  auto db_res = regExists(regName);
   uint32_t rmask = 0x0;
-  if (regExists(regName, &db_res)) {
-    std::string t_db_res = std::string(db_res.data());
-    t_db_res = t_db_res.substr(0,db_res.size());
-    std::vector<std::string> tmp = split(t_db_res,'|');
+  if (db_res) {
+    const std::vector<std::string> tmp = split(*db_res,'|');
     rmask = stoull(tmp[2], nullptr, 16);
   } else {
     std::stringstream errmsg;
@@ -236,9 +251,10 @@ uint32_t utils::getMask(const std::string &regName)
   return rmask;
 }
 
-void utils::writeRawAddress(uint32_t address, uint32_t value)
+void utils::writeRawAddress(const uint32_t address, const uint32_t value)
 {
   auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("logger"));
+
   uint32_t data[] = {value};
   if (memhub_write(memsvc, address, 1, data) != 0) {
     std::stringstream errmsg;
@@ -248,73 +264,19 @@ void utils::writeRawAddress(uint32_t address, uint32_t value)
   }
 }
 
-uint32_t utils::readRawAddress(uint32_t address)
+uint32_t utils::readRawAddress(const uint32_t address)
 {
   auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("logger"));
-  uint32_t data[1];
-  if (memhub_read(memsvc, address, 1, data) != 0) {
-    std::stringstream errmsg;
-    errmsg << "memsvc error: " << memsvc_get_last_error(memsvc);
-    LOG4CPLUS_ERROR(logger, errmsg.str());
-    throw std::runtime_error(errmsg.str());
-    // return 0xdeaddead;
-  }
-  return data[0];
-}
 
-uint32_t utils::getAddress(const std::string &regName)
-{
-  auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("logger"));
-  uint32_t raddr;
-  lmdb::val db_res;
-  if (regExists(regName, &db_res)) {
-    std::string t_db_res = std::string(db_res.data());
-    t_db_res = t_db_res.substr(0,db_res.size());
-    std::vector<std::string> tmp = split(t_db_res,'|');
-    raddr = stoull(tmp[0], nullptr, 16);
-  } else {
-    std::stringstream errmsg;
-    errmsg << "Key: " << regName << " was NOT found";
-    LOG4CPLUS_ERROR(logger, errmsg.str());
-    throw std::runtime_error(errmsg.str());
-    // return 0xdeaddead;
-  }
-  return raddr;
-}
-
- void utils::writeAddress(lmdb::val &db_res, uint32_t value)
-{
-  auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("logger"));
-  std::string t_db_res = std::string(db_res.data());
-  t_db_res = t_db_res.substr(0,db_res.size());
-  std::vector<std::string> tmp = split(t_db_res,'|');
   uint32_t data[1];
-  uint32_t raddr = stoull(tmp[0], nullptr, 16);
-  data[0] = value;
-  if (memhub_write(memsvc, raddr, 1, data) != 0) {
-    std::stringstream errmsg;
-    errmsg << "memsvc error: " << memsvc_get_last_error(memsvc);
-    LOG4CPLUS_ERROR(logger, errmsg.str());
-    throw std::runtime_error(errmsg.str());
-  }
-}
-
-uint32_t utils::readAddress(lmdb::val &db_res)
-{
-  auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("logger"));
-  std::string t_db_res = std::string(db_res.data());
-  t_db_res = t_db_res.substr(0,db_res.size());
-  std::vector<std::string> tmp = split(t_db_res,'|');
-  uint32_t data[1];
-  uint32_t raddr = stoull(tmp[0], nullptr, 16);
   int n_current_tries = 0;
   while (true) {
-    if (memhub_read(memsvc, raddr, 1, data) != 0) {
+    if (memhub_read(memsvc, address, 1, data) != 0) {
       if (n_current_tries < 9) {
         ++n_current_tries;
         std::stringstream errmsg;
         errmsg << "Reading reg "
-               << "0x" << std::hex << std::setw(8) << std::setfill('0') << raddr << std::dec
+               << "0x" << std::hex << std::setw(8) << std::setfill('0') << address << std::dec
                << " failed " << n_current_tries << " times.";
         LOG4CPLUS_WARN(logger, errmsg.str());
       } else {
@@ -323,7 +285,6 @@ uint32_t utils::readAddress(lmdb::val &db_res)
                << " failed 10 times";
         LOG4CPLUS_ERROR(logger, errmsg.str());
         throw std::runtime_error(errmsg.str());
-        // return 0xdeaddead;
       }
     } else {
       break;
@@ -332,36 +293,19 @@ uint32_t utils::readAddress(lmdb::val &db_res)
   return data[0];
 }
 
-void utils::writeRawReg(const std::string &regName, uint32_t value)
+void utils::writeRawReg(const std::string &regName, const uint32_t value)
 {
-  auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("logger"));
-  lmdb::val db_res;
-  if (regExists(regName, &db_res)) {
-    utils::writeAddress(db_res, value);
-  } else {
-    std::stringstream errmsg;
-    errmsg << "Key: " << regName << " was NOT found";
-    LOG4CPLUS_ERROR(logger, errmsg.str());
-    throw std::runtime_error(errmsg.str());
-  }
+  const auto addr = utils::getAddress(regName);
+  return utils::writeRawAddress(addr, value);
 }
 
 uint32_t utils::readRawReg(const std::string &regName)
 {
-  auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("logger"));
-  lmdb::val db_res;
-  if (regExists(regName, &db_res)) {
-    return utils::readAddress(db_res);
-  } else {
-    std::stringstream errmsg;
-    errmsg << "Key: " << regName << " was NOT found";
-    LOG4CPLUS_ERROR(logger, errmsg.str());
-    throw std::runtime_error(errmsg.str());
-    // return 0xdeaddead;
-  }
+  const auto addr = utils::getAddress(regName);
+  return utils::readRawAddress(addr);
 }
 
-uint32_t utils::applyMask(uint32_t data, uint32_t mask)
+uint32_t utils::applyMask(const uint32_t data, uint32_t mask)
 {
   uint32_t result = data & mask;
   for (int i = 0; i < 32; ++i) {
@@ -378,57 +322,46 @@ uint32_t utils::applyMask(uint32_t data, uint32_t mask)
 uint32_t utils::readReg(const std::string &regName)
 {
   auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("logger"));
-  lmdb::val db_res;
-  if (regExists(regName, &db_res)) {
-    std::string t_db_res = std::string(db_res.data());
-    t_db_res = t_db_res.substr(0,db_res.size());
-    std::vector<std::string> tmp = split(t_db_res,'|');
-    std::size_t found = tmp[1].find_first_of("r");
+
+  const auto db_res = regExists(regName);
+  if (db_res) {
+    const std::vector<std::string> tmp = split(*db_res,'|');
+    const uint32_t raddr = stoull(tmp[0], nullptr, 16);
+    const std::size_t found = tmp[1].find_first_of("r");
+    const uint32_t rmask = stoull(tmp[2], nullptr, 16);
     if (found==std::string::npos) {
       std::stringstream errmsg;
       errmsg << "No read permissions for "
              << regName << ": " << tmp[1].c_str();
       LOG4CPLUS_ERROR(logger, errmsg.str());
       throw std::runtime_error(errmsg.str());
-      // return 0xdeaddead;
     }
-    uint32_t data[1];
-    uint32_t raddr = stoull(tmp[0], nullptr, 16);
-    uint32_t rmask = stoull(tmp[2], nullptr, 16);
-    if (memhub_read(memsvc, raddr, 1, data) != 0) {
-      std::stringstream errmsg;
-      errmsg << "read memsvc error " << memsvc_get_last_error(memsvc);
-      LOG4CPLUS_ERROR(logger, errmsg.str());
-      throw std::runtime_error(errmsg.str());
-      // return 0xdeaddead;
-    }
+    const uint32_t data = utils::readRawAddress(raddr);
     if (rmask!=0xFFFFFFFF) {
-      return utils::applyMask(data[0],rmask);
+      return utils::applyMask(data, rmask);
     } else {
-      return data[0];
+      return data;
     }
   } else {
     std::stringstream errmsg;
     errmsg << "Key: " << regName << " was NOT found";
     LOG4CPLUS_ERROR(logger, errmsg.str());
     throw std::runtime_error(errmsg.str());
-    // return 0xdeaddead;
   }
 }
 
 uint32_t utils::readBlock(const std::string &regName, uint32_t *result, const uint32_t &size, const uint32_t &offset)
 {
   auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("logger"));
-  lmdb::val db_res;
-  if (regExists(regName, &db_res)) {
-    std::string t_db_res = std::string(db_res.data());
-    t_db_res = t_db_res.substr(0,db_res.size());
-    std::vector<std::string> tmp = split(t_db_res,'|');
-    uint32_t raddr = stoull(tmp[0], nullptr, 16);
-    uint32_t rmask = stoull(tmp[2], nullptr, 16);
-    uint32_t rsize = stoull(tmp[4], nullptr, 16);
-    std::string rperm = tmp[1];
-    std::string rmode = tmp[3];
+
+  auto db_res = regExists(regName);
+  if (db_res) {
+    const std::vector<std::string> tmp = split(*db_res,'|');
+    const uint32_t raddr = stoull(tmp[0], nullptr, 16);
+    const uint32_t rmask = stoull(tmp[2], nullptr, 16);
+    const uint32_t rsize = stoull(tmp[4], nullptr, 16);
+    const std::string rperm = tmp[1];
+    const std::string rmode = tmp[3];
     LOG4CPLUS_DEBUG(logger, "node " << regName << " properties:"
                     << " 0x"  << std::hex << std::setw(8) << std::setfill('0') << raddr << std::dec
                     << "  0x" << std::hex << std::setw(8) << std::setfill('0') << rmask << std::dec
@@ -511,25 +444,19 @@ utils::SlowCtrlErrCntVFAT utils::repeatedRegRead(const std::string &regName, boo
     return vfatErrs;
 }
 
-void utils::writeReg(const std::string &regName, uint32_t value)
+void utils::writeReg(const std::string &regName, const uint32_t value)
 {
   auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("logger"));
-  lmdb::val db_res;
-  if (regExists(regName, &db_res)) {
-    std::string t_db_res = std::string(db_res.data());
-    t_db_res = t_db_res.substr(0,db_res.size());
-    std::vector<std::string> tmp = split(t_db_res,'|');
+
+  const auto db_res = regExists(regName);
+  if (db_res) {
+    const std::vector<std::string> tmp = split(*db_res,'|');
+    const uint32_t raddr = stoull(tmp[0], nullptr, 16);
     uint32_t rmask = stoull(tmp[2], nullptr, 16);
     if (rmask==0xFFFFFFFF) {
-      utils::writeAddress(db_res, value);
+      return utils::writeRawAddress(raddr, value);
     } else {
-      uint32_t current_value = readAddress(db_res);
-      if (current_value == 0xdeaddead) {
-        std::stringstream errmsg;
-        errmsg << "Writing masked register failed due to problem reading: " << regName;
-        LOG4CPLUS_ERROR(logger, errmsg.str());
-        throw std::runtime_error(errmsg.str());
-      }
+      uint32_t current_value = utils::readRawAddress(raddr);
       int shift_amount = 0;
       uint32_t mask_copy = rmask;
       for (int i = 0; i < 32; ++i) {
@@ -542,7 +469,7 @@ void utils::writeReg(const std::string &regName, uint32_t value)
       }
       uint32_t val_to_write = value << shift_amount;
       val_to_write = (val_to_write & mask_copy) | (current_value & ~mask_copy);
-      utils::writeAddress(db_res, val_to_write);
+      utils::writeRawAddress(raddr, val_to_write);
     }
   } else {
     std::stringstream errmsg;
@@ -555,16 +482,15 @@ void utils::writeReg(const std::string &regName, uint32_t value)
 void utils::writeBlock(const std::string &regName, const uint32_t *values, const uint32_t &size, const uint32_t &offset)
 {
   auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("logger"));
-  lmdb::val db_res;
-  if (regExists(regName, &db_res)) {
-    std::string t_db_res = std::string(db_res.data());
-    t_db_res = t_db_res.substr(0,db_res.size());
-    std::vector<std::string> tmp = split(t_db_res,'|');
-    uint32_t raddr = stoull(tmp[0], nullptr, 16);
-    uint32_t rmask = stoull(tmp[2], nullptr, 16);
-    uint32_t rsize = stoull(tmp[4], nullptr, 16);
-    std::string rmode = tmp[3];
-    std::string rperm = tmp[1];
+
+  auto db_res = regExists(regName);
+  if (db_res) {
+    const std::vector<std::string> tmp = split(*db_res,'|');
+    const uint32_t raddr = stoull(tmp[0], nullptr, 16);
+    const uint32_t rmask = stoull(tmp[2], nullptr, 16);
+    const uint32_t rsize = stoull(tmp[4], nullptr, 16);
+    const std::string rmode = tmp[3];
+    const std::string rperm = tmp[1];
     LOG4CPLUS_DEBUG(logger, "node " << regName << " properties:"
                     << " 0x"  << std::hex << std::setw(8) << std::setfill('0') << raddr << std::dec
                     << "  0x" << std::hex << std::setw(8) << std::setfill('0') << rmask << std::dec

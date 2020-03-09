@@ -978,7 +978,7 @@ std::vector<uint32_t> calibration::dacScan::operator()(const uint16_t &ohN,
 
     if (useExtRefADC) {
       // for backward compatibility, use ADC1 instead of ADC1_CACHED if it exists
-      foundADCCached = utils::regExists(regBase + ".ADC1_CACHED");
+      foundADCCached = bool(utils::regExists(regBase + ".ADC1_CACHED"));
       if (foundADCCached) {
         adcAddr[vfatN]            = utils::getAddress(regBase + ".ADC1_CACHED");
         adcCacheUpdateAddr[vfatN] = utils::getAddress(regBase + ".ADC1_UPDATE");
@@ -987,7 +987,7 @@ std::vector<uint32_t> calibration::dacScan::operator()(const uint16_t &ohN,
       }
     } else {
       // for backward compatibility, use ADC0 instead of ADC0_CACHED if it exists
-      foundADCCached = utils::regExists(regBase + ".ADC0_CACHED");
+      foundADCCached = bool(utils::regExists(regBase + ".ADC0_CACHED"));
       if (foundADCCached) {
         adcAddr[vfatN]            = utils::getAddress(regBase + ".ADC0_CACHED");
         adcCacheUpdateAddr[vfatN] = utils::getAddress(regBase + ".ADC0_UPDATE");
