@@ -78,18 +78,6 @@ namespace utils {
     void initLogging();
 
     /*!
-     *  \brief This macro is used to terminate a function if an error occurs.
-     *         It logs the message  and returns the \c error_code value.
-     *
-     *  \param \c message The \c std::string error message.
-     *  \param \c error_code Value that is passed to the \c return statement.
-     */
-#define EMIT_RPC_ERROR(message, error_code) {           \
-      LOG4CPLUS_ERROR(logger, message);                 \
-      return error_code;                                \
-    }
-
-    /*!
      *  \brief return 1 if the given bit in word is 1 else 0
      *
      *  \param \c word: an unsigned int of 32 bit
