@@ -13,15 +13,6 @@
 
 memsvc_handle_t memsvc;
 
-// lmdb::env env = lmdb::env::create();
-// env.set_mapsize(utils::LMDB_SIZE);
-// std::string gem_path       = std::getenv("GEM_PATH");
-// std::string lmdb_data_file = gem_path+"/address_table.mdb";
-// env.open(lmdb_data_file.c_str(), 0, 0664);
-// static utils::LocalArgs utils::la = std::make_unique({.rtxn = lmdb::txn::begin(env, nullptr, MDB_RDONLY),
-//       .dbi  = lmdb::dbi::open(rtxn, nullptr)});
-
-
 std::vector<std::string> utils::split(const std::string &s, char delim)
 {
   std::vector<std::string> elems;

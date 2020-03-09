@@ -35,15 +35,6 @@ log4cplus.appender.syslog.layout.ConversionPattern= %h[%i] - %M - %m
 
 namespace utils {
 
-    /*!
-     *  \brief Contains arguments required to execute an LMDB transaction
-     */
-    struct LocalArgs
-    {
-        lmdb::txn &rtxn; ///< LMDB transaction handle
-        lmdb::dbi &dbi;  ///< LMDB individual database handle
-    };
-
     static constexpr uint32_t LMDB_SIZE = 1UL * 1024UL * 1024UL * 50UL; ///< Maximum size of the LMDB object, currently 50 MiB
 
     /*!
