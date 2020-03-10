@@ -31,7 +31,7 @@ uint32_t amc::sca::formatSCAData(uint32_t const& data)
 
 void amc::sca::sendSCACommand::operator()(uint8_t const& ch, uint8_t const& cmd, uint8_t const& len, uint32_t data, uint16_t const& ohMask) const
 {
-  // FIXME: DECIDE WHETHER TO HAVE HERE // if (utils::regExists("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF")) {
+  // FIXME: DECIDE WHETHER TO HAVE HERE // if (!utils::regExists("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF").empty()) {
   // FIXME: DECIDE WHETHER TO HAVE HERE //   utils::writeReg("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF",         0xffffffff);
   // FIXME: DECIDE WHETHER TO HAVE HERE // }
 
@@ -45,7 +45,7 @@ void amc::sca::sendSCACommand::operator()(uint8_t const& ch, uint8_t const& cmd,
 
 std::vector<uint32_t> amc::sca::sendSCACommandWithReply::operator()(uint8_t const& ch, uint8_t const& cmd, uint8_t const& len, uint32_t data, uint16_t const& ohMask) const
 {
-  // FIXME: DECIDE WHETHER TO HAVE HERE // if (utils::regExists("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF")) {
+  // FIXME: DECIDE WHETHER TO HAVE HERE // if (!utils::regExists("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF").empty()) {
   // FIXME: DECIDE WHETHER TO HAVE HERE //   uint32_t monMask = utils::readReg("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF");
   // FIXME: DECIDE WHETHER TO HAVE HERE //   utils::writeReg("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF",       0xffffffff);
   // FIXME: DECIDE WHETHER TO HAVE HERE // }
@@ -73,7 +73,7 @@ std::vector<uint32_t> amc::sca::sendSCACommandWithReply::operator()(uint8_t cons
 std::vector<uint32_t> amc::sca::scaCTRLCommand::operator()(sca::CTRLCommand const& cmd, uint16_t const& ohMask, uint8_t const& len, uint32_t const& data) const
 {
   uint32_t monMask = 0xffffffff;
-  if (utils::regExists("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF")) {
+  if (!utils::regExists("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF").empty()) {
     monMask = utils::readReg("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF");
     utils::writeReg("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF",       0xffffffff);
   }
@@ -105,7 +105,7 @@ std::vector<uint32_t> amc::sca::scaCTRLCommand::operator()(sca::CTRLCommand cons
     result = amc::sca::sendSCACommandWithReply{}(static_cast<uint8_t>(SCAChannel::CTRL), static_cast<uint8_t>(sca::CTRLCommand::GET_DATA), len, data, ohMask);
   }
 
-  if (utils::regExists("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF")) {
+  if (!utils::regExists("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF").empty()) {
     utils::writeReg("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF", monMask);
   }
 
@@ -124,14 +124,14 @@ std::vector<uint32_t> amc::sca::scaI2CCommand::operator()(sca::I2CChannel const&
   std::vector<uint32_t> result;
 
   uint32_t monMask = 0xffffffff;
-  if (utils::regExists("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF")) {
+  if (!utils::regExists("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF").empty()) {
     monMask = utils::readReg("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF");
     utils::writeReg("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF",       0xffffffff);
   }
 
   amc::sca::sendSCACommand{}(static_cast<uint8_t>(ch), static_cast<uint8_t>(cmd), len, data, ohMask);
 
-  if (utils::regExists("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF")) {
+  if (!utils::regExists("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF").empty()) {
     utils::writeReg("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF", monMask);
   }
 
@@ -142,14 +142,14 @@ std::vector<uint32_t> amc::sca::scaGPIOCommand::operator()(sca::GPIOCommand cons
 {
   // enable the GPIO bus through the CTRL CRB register, bit 2
   uint32_t monMask = 0xffffffff;
-  if (utils::regExists("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF")) {
+  if (!utils::regExists("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF").empty()) {
     monMask = utils::readReg("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF");
     utils::writeReg("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF",       0xffffffff);
   }
 
   std::vector<uint32_t> reply = amc::sca::sendSCACommandWithReply{}(static_cast<uint8_t>(SCAChannel::GPIO), static_cast<uint8_t>(cmd), len, data, ohMask);
 
-  if (utils::regExists("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF")) {
+  if (!utils::regExists("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF").empty()) {
     utils::writeReg("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF", monMask);
   }
 
@@ -159,7 +159,7 @@ std::vector<uint32_t> amc::sca::scaGPIOCommand::operator()(sca::GPIOCommand cons
 std::vector<uint32_t> amc::sca::scaADCCommand::operator()(sca::ADCChannel const& ch, uint16_t const& ohMask) const
 {
   uint32_t monMask = 0xffffffff;
-  if (utils::regExists("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF")) {
+  if (!utils::regExists("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF").empty()) {
     monMask = utils::readReg("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF");
     utils::writeReg("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF",       0xffffffff);
   }
@@ -184,7 +184,7 @@ std::vector<uint32_t> amc::sca::scaADCCommand::operator()(sca::ADCChannel const&
   // // get the offset
   // std::vector<uint32_t> raw  = amc::sca::sendSCACommandWithReply{}(SCAChannel::ADC, sca::ADCCommand::ADC_R_OFS, 0x1, 0x0, ohMask);
 
-  if (utils::regExists("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF")) {
+  if (!utils::regExists("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF").empty()) {
     utils::writeReg("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF", monMask);
   }
 

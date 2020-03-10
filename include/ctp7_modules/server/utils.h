@@ -11,7 +11,6 @@
 #include <sstream>
 #include <string>
 #include <vector>
-#include <experimental/optional>
 
 extern memsvc_handle_t memsvc; /// \var global memory service handle required for registers read/write operations
 /* extern log4cplus logger; /// \var global logger */
@@ -104,9 +103,9 @@ namespace utils {
      *
      *  \param \c regName Register name
      *
-     *  \return An optional \c std::string containing the content of the LMDB register, if it exists
+     *  \return A \c std::vector<std::string> containing the parsed content of the LMDB register. Is empty if the register does not exist.
      */
-    std::experimental::optional<std::string> regExists(const std::string &regName);
+    std::vector<std::string> regExists(const std::string &regName);
 
     /*!
      *  \brief Returns an address of a given register
