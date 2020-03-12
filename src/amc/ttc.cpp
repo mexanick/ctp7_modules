@@ -89,7 +89,7 @@ void amc::ttc::ttcMMCMPhaseShift::operator()(bool relock, bool modeBC0, bool sca
 
   uint32_t mmcmShiftCnt = utils::readReg("GEM_AMC.TTC.STATUS.CLK.PA_MANUAL_SHIFT_CNT");
   uint32_t gthShiftCnt  = utils::readReg("GEM_AMC.TTC.STATUS.CLK.PA_MANUAL_GTH_SHIFT_CNT");
-  int  pllLockCnt = amc::ttc::checkPLLLock{}(readAttempts);
+  std::uint32_t pllLockCnt = amc::ttc::checkPLLLock{}(readAttempts);
   bool firstUnlockFound = false;
   bool nextLockFound    = false;
   bool bestLockFound    = false;
@@ -549,7 +549,7 @@ void amc::ttc::ttcMMCMPhaseShift::operator()(bool relock, bool modeBC0, bool sca
   return;
 }
 
-int amc::ttc::checkPLLLock::operator()(int readAttempts) const
+std::uint32_t amc::ttc::checkPLLLock::operator()(const std::uint32_t readAttempts) const
 {
   auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("main"));
 
@@ -557,7 +557,7 @@ int amc::ttc::checkPLLLock::operator()(int readAttempts) const
   std::stringstream msg;
   msg << "Executing checkPLLLock with " << readAttempts << " attempted relocks";
   LOG4CPLUS_DEBUG(logger, msg.str());
-  for (int i = 0; i < readAttempts; ++i ) {
+  for (std::uint32_t i = 0; i < readAttempts; ++i ) {
     utils::writeReg("GEM_AMC.TTC.CTRL.PA_MANUAL_PLL_RESET", 0x1);
 
     // wait 100us to allow the PLL to lock
@@ -572,7 +572,7 @@ int amc::ttc::checkPLLLock::operator()(int readAttempts) const
 }
 
 // FIXME: can maybe abstract this to amc::ttc::getPhase(clk, mode, reads)
-float amc::ttc::getMMCMPhaseMean::operator()(int readAttempts) const
+float amc::ttc::getMMCMPhaseMean::operator()(const std::uint32_t readAttempts) const
 {
   if (readAttempts < 1) {
     return static_cast<float>(utils::readReg("GEM_AMC.TTC.STATUS.CLK.TTC_PM_PHASE_MEAN"));
@@ -580,14 +580,14 @@ float amc::ttc::getMMCMPhaseMean::operator()(int readAttempts) const
     return static_cast<float>(utils::readReg("GEM_AMC.TTC.STATUS.CLK.TTC_PM_PHASE"));
   } else {
     float mean = 0.;
-    for (int read = 0; read < readAttempts; ++read) {
+    for (std::uint32_t read = 0; read < readAttempts; ++read) {
       mean += utils::readReg("GEM_AMC.TTC.STATUS.CLK.TTC_PM_PHASE");
     }
     return mean/readAttempts;
   }
 }
 
-float amc::ttc::getGTHPhaseMean::operator()(int readAttempts) const
+float amc::ttc::getGTHPhaseMean::operator()(const std::uint32_t readAttempts) const
 {
   if (readAttempts < 1) {
     return static_cast<float>(utils::readReg("GEM_AMC.TTC.STATUS.CLK.GTH_PM_PHASE_MEAN"));
@@ -595,14 +595,14 @@ float amc::ttc::getGTHPhaseMean::operator()(int readAttempts) const
     return static_cast<float>(utils::readReg("GEM_AMC.TTC.STATUS.CLK.GTH_PM_PHASE"));
   } else {
     float mean = 0.;
-    for (int read = 0; read < readAttempts; ++read) {
+    for (std::uint32_t read = 0; read < readAttempts; ++read) {
       mean += utils::readReg("GEM_AMC.TTC.STATUS.CLK.GTH_PM_PHASE");
     }
     return mean/readAttempts;
   }
 }
 
-float amc::ttc::getMMCMPhaseMedian::operator()(int readAttempts) const
+float amc::ttc::getMMCMPhaseMedian::operator()(const std::uint32_t readAttempts) const
 {
   auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("main"));
 
@@ -613,14 +613,14 @@ float amc::ttc::getMMCMPhaseMedian::operator()(int readAttempts) const
     return static_cast<float>(utils::readReg("GEM_AMC.TTC.STATUS.CLK.TTC_PM_PHASE"));
   } else {
     float mean = 0.;
-    for (int read = 0; read < readAttempts; ++read) {
+    for (std::uint32_t read = 0; read < readAttempts; ++read) {
       mean += utils::readReg("GEM_AMC.TTC.STATUS.CLK.TTC_PM_PHASE");
     }
     return mean/readAttempts;
   }
 }
 
-float amc::ttc::getGTHPhaseMedian::operator()(int readAttempts) const
+float amc::ttc::getGTHPhaseMedian::operator()(const std::uint32_t readAttempts) const
 {
   auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("main"));
 
@@ -631,7 +631,7 @@ float amc::ttc::getGTHPhaseMedian::operator()(int readAttempts) const
     return static_cast<float>(utils::readReg("GEM_AMC.TTC.STATUS.CLK.GTH_PM_PHASE"));
   } else {
     float mean = 0.;
-    for (int read = 0; read < readAttempts; ++read) {
+    for (std::uint32_t read = 0; read < readAttempts; ++read) {
       mean += utils::readReg("GEM_AMC.TTC.STATUS.CLK.GTH_PM_PHASE");
     }
     return mean/readAttempts;

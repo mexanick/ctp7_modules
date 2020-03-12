@@ -67,7 +67,7 @@ namespace amc {
      */
     struct checkPLLLock : public xhal::common::rpc::Method
     {
-      int operator()(int readAttempts) const;
+      std::uint32_t operator()(const std::uint32_t readAttempts) const;
     };
 
     /*!
@@ -81,7 +81,7 @@ namespace amc {
      */
     struct getMMCMPhaseMean : public xhal::common::rpc::Method
     {
-      float operator()(int readAttempts) const;
+      float operator()(const std::uint32_t readAttempts) const;
     };
 
     /*!
@@ -95,7 +95,7 @@ namespace amc {
      */
     struct getGTHPhaseMean : public xhal::common::rpc::Method
     {
-      float operator()(int readAttempts) const;
+      float operator()(const std::uint32_t readAttempts) const;
     };
 
     /*!
@@ -107,7 +107,7 @@ namespace amc {
      */
     struct getMMCMPhaseMedian : public xhal::common::rpc::Method
     {
-      float operator()(int readAttempts) const;
+      float operator()(const std::uint32_t readAttempts) const;
     };
 
     /*!
@@ -119,7 +119,7 @@ namespace amc {
      */
     struct getGTHPhaseMedian : public xhal::common::rpc::Method
     {
-      float operator()(int readAttempts) const;
+      float operator()(const std::uint32_t readAttempts) const;
     };
 
     /*!

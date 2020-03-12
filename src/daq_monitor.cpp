@@ -235,7 +235,7 @@ std::map<std::string, uint32_t> daqmon::getmonOHmain::operator()(const uint16_t 
 std::map<std::string, uint32_t> daqmon::getmonOHSCAmain::operator()(const uint16_t &ohMask) const
 {
   uint32_t initSCAMonOffMask = 0xffffffff;
-  if (utils::regExists("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF")) {
+  if (!utils::regExists("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF").empty()) {
     initSCAMonOffMask = utils::readReg("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF");
     utils::writeReg("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF", (~ohMask) & 0x3ff);
   }
@@ -289,7 +289,7 @@ std::map<std::string, uint32_t> daqmon::getmonOHSCAmain::operator()(const uint16
       scaMon[keyName + "." + sensor] = utils::readReg(regName+ "." + sensor);
   }
 
-  if (utils::regExists("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF")) {
+  if (!utils::regExists("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF").empty()) {
     utils::writeReg("GEM_AMC.SLOW_CONTROL.SCA.ADC_MONITORING.MONITORING_OFF", initSCAMonOffMask);
   }
 

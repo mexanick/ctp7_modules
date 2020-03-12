@@ -26,7 +26,7 @@ namespace vfat3 {
   auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("logger"));
 }
 
-uint16_t decodeChipID(const uint32_t &encChipID)
+uint16_t vfat3::decodeChipID(const uint32_t &encChipID)
 {
   // can the generator be static to limit creation/destruction of resources?
   static reedmuller rm = 0;

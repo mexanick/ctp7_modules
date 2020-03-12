@@ -3,10 +3,10 @@
 
 #include "ctp7_modules/server/memhub.h"
 
-#include <libmemsvc.h>
-
 #include "xhal/common/utils/XHALXMLParser.h"
 #include "xhal/extern/lmdb++.h"
+
+#include <libmemsvc.h>
 
 #include <sstream>
 #include <string>
@@ -33,15 +33,6 @@ log4cplus.appender.syslog.layout.ConversionPattern= %h[%i] - %M - %m
 )----";
 
 namespace utils {
-
-    /*!
-     *  \brief Contains arguments required to execute an LMDB transaction
-     */
-    struct LocalArgs
-    {
-        lmdb::txn &rtxn; ///< LMDB transaction handle
-        lmdb::dbi &dbi;  ///< LMDB individual database handle
-    };
 
     static constexpr uint32_t LMDB_SIZE = 1UL * 1024UL * 1024UL * 50UL; ///< Maximum size of the LMDB object, currently 50 MiB
 
@@ -86,18 +77,6 @@ namespace utils {
     void initLogging();
 
     /*!
-     *  \brief This macro is used to terminate a function if an error occurs.
-     *         It logs the message  and returns the \c error_code value.
-     *
-     *  \param \c message The \c std::string error message.
-     *  \param \c error_code Value that is passed to the \c return statement.
-     */
-#define EMIT_RPC_ERROR(message, error_code) {           \
-      LOG4CPLUS_ERROR(logger, message);                 \
-      return error_code;                                \
-    }
-
-    /*!
      *  \brief return 1 if the given bit in word is 1 else 0
      *
      *  \param \c word: an unsigned int of 32 bit
@@ -122,11 +101,18 @@ namespace utils {
     /*!
      *  \brief Returns whether or not a named register can be found in the LMDB
      *
-     *  \param \c la Local arguments structure
      *  \param \c regName Register name
-     *  \param \c db_res pointer to a lmdb::val result that the calling function requires
+     *
+     *  \return A \c std::vector<std::string> containing the parsed content of the LMDB register. Is empty if the register does not exist.
      */
-    bool regExists(const std::string & regName, lmdb::val *db_res=nullptr);
+    std::vector<std::string> regExists(const std::string &regName);
+
+    /*!
+     *  \brief Returns an address of a given register
+     *
+     *  \param \c regName Register name
+     */
+    uint32_t getAddress(const std::string &regName);
 
     /*!
      *  \brief Returns the mask for a given register
@@ -141,36 +127,14 @@ namespace utils {
      *  \param \c address Register address
      *  \param \c value Value to write
      */
-    void writeRawAddress(uint32_t address, uint32_t value);
+    void writeRawAddress(const uint32_t address, const uint32_t value);
 
     /*!
      *  \brief Reads a value from raw register address. Register mask is not applied
      *
      *  \param \c address Register address
      */
-    uint32_t readRawAddress(uint32_t address);
-
-    /*!
-     *  \brief Returns an address of a given register
-     *
-     *  \param \c regName Register name
-     */
-    uint32_t getAddress(const std::string &regName);
-
-    /*!
-     *  \brief Writes given value to the address. Register mask is not applied
-     *
-     *  \param \c db_res LMDB call result
-     *  \param \c value Value to write
-     */
-    void writeAddress(lmdb::val &db_res, uint32_t value);
-
-    /*!
-     *  \brief Reads given value to the address. Register mask is not applied
-     *
-     *  \param \c db_res LMDB call result
-     */
-    uint32_t readAddress(lmdb::val &db_res);
+    uint32_t readRawAddress(const uint32_t address);
 
     /*!
      *  \brief Writes a value to a raw register. Register mask is not applied
@@ -178,7 +142,7 @@ namespace utils {
      *  \param \c regName Register name
      *  \param \c value Value to write
      */
-    void writeRawReg(const std::string &regName, uint32_t value);
+    void writeRawReg(const std::string &regName, const uint32_t value);
 
     /*!
      *  \brief Reads a value from raw register. Register mask is not applied
@@ -196,7 +160,7 @@ namespace utils {
     uint32_t applyMask(uint32_t data, uint32_t mask);
 
     /*!
-     *  \brief Reads a value from register. Register mask is applied. Will return 0xdeaddead if register is no accessible
+     *  \brief Reads a value from register. Register mask is applied. An \c std::runtime_error is thrown if the register cannot be read.
      *
      *  \param \c regName Register name
      */
@@ -235,15 +199,15 @@ namespace utils {
      *  \param \c breakOnFailure stop attempting to read regName before nReads is reached if a failed read occurs
      *  \param \c nReads number of times to attempt to read regName
      */
-    SlowCtrlErrCntVFAT repeatedRegRead(const std::string & regName, bool breakOnFailure=true, uint32_t nReads=1000);
+    SlowCtrlErrCntVFAT repeatedRegRead(const std::string & regName, const bool breakOnFailure=true, const uint32_t nReads=1000);
 
     /*!
-     *  \brief Writes a value to a register. Register mask is applied
+     *  \brief Writes a value to a register. Register mask is applied. An \c std::runtime_error is thrown if the register cannot be read.
      *
      *  \param \c regName Register name
      *  \param \c value Value to write
      */
-    void writeReg(const std::string &regName, uint32_t value);
+    void writeReg(const std::string &regName, const uint32_t value);
 
     /*!
      *  \brief Writes a block of values to a contiguous address space.

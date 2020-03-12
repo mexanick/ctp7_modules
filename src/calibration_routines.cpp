@@ -19,7 +19,7 @@ namespace calibration {
   auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("logger"));
 }
 
-std::unordered_map<uint32_t, uint32_t> setSingleChanMask(const uint16_t ohN, const uint8_t vfatN, const uint8_t ch)
+std::unordered_map<uint32_t, uint32_t> calibration::setSingleChanMask(const uint8_t &ohN, const uint8_t &vfatN, const uint8_t &ch)
 {
   std::unordered_map<uint32_t, uint32_t> map_chanOrigMask;
   uint32_t chanMaskAddr;
@@ -37,7 +37,7 @@ std::unordered_map<uint32_t, uint32_t> setSingleChanMask(const uint16_t ohN, con
   return map_chanOrigMask;
 }
 
-void applyChanMask(std::unordered_map<uint32_t, uint32_t> chMasks)
+void calibration::applyChanMask(const std::unordered_map<uint32_t, uint32_t> &chMasks)
 {
   for (auto const& chMask : chMasks) {
     utils::writeRawAddress(chMask.first, chMask.second);
@@ -978,7 +978,7 @@ std::vector<uint32_t> calibration::dacScan::operator()(const uint16_t &ohN,
 
     if (useExtRefADC) {
       // for backward compatibility, use ADC1 instead of ADC1_CACHED if it exists
-      foundADCCached = utils::regExists(regBase + ".ADC1_CACHED");
+      foundADCCached = !utils::regExists(regBase + ".ADC1_CACHED").empty();
       if (foundADCCached) {
         adcAddr[vfatN]            = utils::getAddress(regBase + ".ADC1_CACHED");
         adcCacheUpdateAddr[vfatN] = utils::getAddress(regBase + ".ADC1_UPDATE");
@@ -987,7 +987,7 @@ std::vector<uint32_t> calibration::dacScan::operator()(const uint16_t &ohN,
       }
     } else {
       // for backward compatibility, use ADC0 instead of ADC0_CACHED if it exists
-      foundADCCached = utils::regExists(regBase + ".ADC0_CACHED");
+      foundADCCached = !utils::regExists(regBase + ".ADC0_CACHED").empty();
       if (foundADCCached) {
         adcAddr[vfatN]            = utils::getAddress(regBase + ".ADC0_CACHED");
         adcCacheUpdateAddr[vfatN] = utils::getAddress(regBase + ".ADC0_UPDATE");
