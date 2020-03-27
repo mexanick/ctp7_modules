@@ -17,48 +17,19 @@ namespace oh {
 
 void oh::broadcastWrite::operator()(const uint32_t &ohN, const std::string &regName, const uint32_t &value, const uint32_t &mask) const
 {
-  uint32_t fw_maj = utils::readReg("GEM_AMC.GEM_SYSTEM.RELEASE.MAJOR");
-  if (fw_maj == 1) {
-    std::string regBase = "GEM_AMC.OH.OH" + std::to_string(ohN) + ".GEB.Broadcast";
-
-    std::string t_regName;
-    t_regName = regBase + ".Reset";
-    utils::writeRawReg(t_regName, 0);
-    t_regName = regBase + ".Mask";
-    utils::writeRawReg(t_regName, mask);
-    t_regName = regBase + ".Request." + regName;
-    utils::writeRawReg(t_regName, value);
-    t_regName = regBase + ".Running";
-    while (uint32_t t_res = utils::readRawReg(t_regName)) {
-      if (t_res == 0xdeaddead)
-        break;
-      std::this_thread::sleep_for(std::chrono::microseconds(1000));
+  std::string t_regName;
+  for (size_t vfatN = 0; vfatN < oh::VFATS_PER_OH; ++vfatN) {
+    if (!((mask >> vfatN)&0x1)) {
+      std::string regBase = "GEM_AMC.OH.OH" + std::to_string(ohN) + ".GEB.VFAT" + std::to_string(vfatN) + ".";
+      t_regName = regBase + regName;
+      utils::writeReg(t_regName, value);
     }
-  } else if (fw_maj == 3) {
-    std::string t_regName;
-    for (size_t vfatN = 0; vfatN < oh::VFATS_PER_OH; ++vfatN) {
-      if (!((mask >> vfatN)&0x1)) {
-        std::string regBase = "GEM_AMC.OH.OH" + std::to_string(ohN) + ".GEB.VFAT" + std::to_string(vfatN) + ".";
-        t_regName = regBase + regName;
-        utils::writeReg(t_regName, value);
-      }
-    }
-  } else {
-    LOG4CPLUS_ERROR(logger, "Unexpected value for system release major: " << fw_maj);
   }
 }
 
 std::vector<uint32_t> oh::broadcastRead::operator()(const uint32_t &ohN, const std::string &regName, const uint32_t &mask) const
 {
-  uint32_t fw_maj = utils::readReg("GEM_AMC.GEM_SYSTEM.RELEASE.MAJOR");
-  std::string regBase = "GEM_AMC.OH.OH" + std::to_string(ohN) + ".GEB.";
-  if (fw_maj == 1) {
-    regBase+="VFATS.VFAT";
-  } else if (fw_maj == 3) {
-    regBase+="VFAT";
-  } else {
-    LOG4CPLUS_ERROR(logger, "Unexpected value for system release major!");
-  }
+  std::string regBase = "GEM_AMC.OH.OH" + std::to_string(ohN) + ".GEB.VFAT";
 
   std::string t_regName;
   std::vector<uint32_t> data;
@@ -88,71 +59,24 @@ void oh::biasAllVFATs::operator()(const uint32_t &ohN, const uint32_t &mask) con
 
 void oh::setAllVFATsToRunMode::operator()(const uint32_t &ohN, const uint32_t &mask) const
 {
-  switch (amc::fw_version_check("setAllVFATsToRunMode")) {
-  case 3:
-    broadcastWrite{}(ohN, "CFG_RUN", 0x1, mask);
-    break;
-  case 1:
-    broadcastWrite{}(ohN, "ContReg0", 0x37, mask);
-    break;
-  default:
-    LOG4CPLUS_ERROR(logger, "Unexpected value for system release major, do nothing");
-    break;
-  }
-
-  return;
+  broadcastWrite{}(ohN, "CFG_RUN", 0x1, mask);
 }
 
 void oh::setAllVFATsToSleepMode::operator()(const uint32_t &ohN, const uint32_t &mask) const
 {
-  switch(amc::fw_version_check("setAllVFATsToRunMode")) {
-  case 3:
-    broadcastWrite{}(ohN, "CFG_RUN", 0x0, mask);
-    break;
-  case 1:
-    broadcastWrite{}(ohN, "ContReg0", 0x36, mask);
-    break;
-  default:
-    LOG4CPLUS_ERROR(logger, "Unexpected value for system release major, do nothing");
-    break;
-  }
-
-  return;
+  broadcastWrite{}(ohN, "CFG_RUN", 0x0, mask);
 }
 
 void oh::stopCalPulse2AllChannels::operator()(const uint32_t &ohN, const uint32_t &mask, const uint32_t &chMin, const uint32_t &chMax) const
 {
-  const uint32_t fw_maj = utils::readReg("GEM_AMC.GEM_SYSTEM.RELEASE.MAJOR");
-
-  if (fw_maj == 1) {
-    uint32_t trimVal = 0;
-    for (size_t vfatN = 0; vfatN < oh::VFATS_PER_OH; ++vfatN) {
-      if ((mask >> vfatN) & 0x1)
-        continue;
-      std::string regBase = "GEM_AMC.OH.OH" + std::to_string(ohN) + ".GEB.VFATS.VFAT" + std::to_string(vfatN) + ".VFATChannels.ChanReg";
-      for (uint32_t chan = chMin; chan <= chMax; ++chan) {
-        if (chan > 127) {
-          LOG4CPLUS_ERROR(logger, "OH " << ohN << ": Channel " << chan << " greater than the channel maximum " << 127);
-        } else {
-          trimVal = (0x3f & utils::readReg(regBase + std::to_string(chan)));
-          utils::writeReg(regBase + std::to_string(chan), trimVal);
-        }
-      }
+  for (size_t vfatN = 0; vfatN < oh::VFATS_PER_OH; ++vfatN) {
+    if ((mask >> vfatN) & 0x1)
+      continue;
+    std::string regBase = "GEM_AMC.OH.OH" + std::to_string(ohN) + ".GEB.VFAT" + std::to_string(vfatN) + ".VFAT_CHANNELS.CHANNEL";
+    for (uint32_t chan = chMin; chan <= chMax; ++chan) {
+      utils::writeReg(regBase + std::to_string(chan) + ".CALPULSE_ENABLE", 0x0);
     }
-  } else if (fw_maj == 3) {
-    for (size_t vfatN = 0; vfatN < oh::VFATS_PER_OH; ++vfatN) {
-      if ((mask >> vfatN) & 0x1)
-        continue;
-      std::string regBase = "GEM_AMC.OH.OH" + std::to_string(ohN) + ".GEB.VFAT" + std::to_string(vfatN) + ".VFAT_CHANNELS.CHANNEL";
-      for (uint32_t chan = chMin; chan <= chMax; ++chan) {
-        utils::writeReg(regBase + std::to_string(chan) + ".CALPULSE_ENABLE", 0x0);
-      }
-    }
-  } else {
-    LOG4CPLUS_ERROR(logger, "Unexpected value for system release major: " << fw_maj);
   }
-
-  return;
 }
 
 std::map<std::string, std::vector<uint32_t>> oh::statusOH::operator()(const uint32_t &ohMask) const
