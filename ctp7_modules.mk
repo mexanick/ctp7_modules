@@ -92,7 +92,7 @@ TestSources  := $(wildcard $(PackageTestSourceDir)/*.cxx) $(wildcard $(PackageTe
 Dependencies := $(patsubst $(PackageSourceDir)/%.cpp, $(PackageObjectDir)/%.d, $(Sources))
 TargetObjects:= $(patsubst %.d,%.o,$(Dependencies))
 
-TargetLibraries:=memhub memory utils amc optohybrid vfat3 daq_monitor calibration_routines gbt
+TargetLibraries:=memhub utils amc optohybrid vfat3 daq_monitor calibration_routines gbt
 ifeq ($(Arch),x86_64)
 TargetLibraries+=libmemsvc
 else
@@ -190,10 +190,6 @@ memhub:
 endif
 	$(eval export EXTRA_LINKS=-lmemsvc)
 	TargetArch=$(TargetArch) $(MAKE) -f ctp7_modules.mk $(PackageLibraryDir)/memhub.so EXTRA_LINKS="$(EXTRA_LINKS)"
-
-memory: memhub
-	$(eval export EXTRA_LINKS=$(^:%=-l:%.so))
-	TargetArch=$(TargetArch) $(MAKE) -f ctp7_modules.mk $(PackageLibraryDir)/memory.so EXTRA_LINKS="$(EXTRA_LINKS)"
 
 optical: memhub
 	$(eval export EXTRA_LINKS=$(^:%=-l:%.so))
