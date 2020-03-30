@@ -71,24 +71,9 @@ namespace utils {
      *
      *  \returns \c uint32_t register value
      */
-    struct readRemoteReg : public xhal::common::rpc::Method
+    struct [[deprecated]] readRemoteReg : public xhal::common::rpc::Method
     {
         uint32_t operator()(const std::string &regName) const;
-    };
-
-    /*!
-     *  \brief Reads a block of values from a contiguous address space.
-     *
-     *  \param \c regName Register name of the block to be read
-     *  \param \c size number of words to read (should this just come from the register properties?
-     *  \param \c offset Start reading from an offset from the base address returned by regName
-     *
-     *  \returns the vector of uint32_t words in the result 
-     */
-
-    struct readRemoteBlock : public xhal::common::rpc::Method
-    {
-        std::vector<uint32_t> operator()(const std::string &regName, const uint32_t size, const uint32_t offset=0) const;
     };
 
     /*!
@@ -98,7 +83,7 @@ namespace utils {
      *
      *  \param \c value Value to write
      */
-    struct writeRemoteReg : public xhal::common::rpc::Method
+    struct [[deprecated]] writeRemoteReg : public xhal::common::rpc::Method
     {
         void operator()(const std::string &regName, const uint32_t value) const;
     };

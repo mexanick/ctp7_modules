@@ -542,14 +542,6 @@ uint32_t utils::readRemoteReg::operator()(const std::string &regName) const
   return readReg(regName);
 }
 
-std::vector<uint32_t> utils::readRemoteBlock::operator()(const std::string &regName, const uint32_t size, const uint32_t offset) const
-{
-  std::vector<uint32_t> res(size);
-  if (size != readBlock(regName, res.data(), res.size(), offset))
-    throw std::runtime_error("readRemoteBlock:: returned block size doesn't correspond to requested");
-  return res;
-}
-
 void utils::writeRemoteReg::operator()(const std::string &regName, const uint32_t value) const
 {
   return writeReg(regName, value);
@@ -573,7 +565,6 @@ extern "C" {
         xhal::common::rpc::registerMethod<utils::update_address_table>(modmgr);
         xhal::common::rpc::registerMethod<utils::readRegFromDB>(modmgr);
         xhal::common::rpc::registerMethod<utils::readRemoteReg>(modmgr);
-        xhal::common::rpc::registerMethod<utils::readRemoteBlock>(modmgr);
         xhal::common::rpc::registerMethod<utils::writeRemoteReg>(modmgr);
     }
 }

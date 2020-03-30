@@ -139,15 +139,6 @@ namespace utils {
     };
 
     /*!
-     *  \brief Reads a value from register. Register mask is applied. An \c std::runtime_error is thrown if the register cannot be read.
-     *
-     *  \param \c regName Register name
-     *
-     *  \returns \c uint32_t register value
-     */
-     uint32_t readReg(const std::string &regName);
-
-    /*!
      *  \brief return 1 if the given bit in word is 1 else 0
      *
      *  \param \c word: an unsigned int of 32 bit
@@ -231,6 +222,23 @@ namespace utils {
     uint32_t applyMask(uint32_t data, uint32_t mask);
 
     /*!
+     *  \brief Reads a value from register. Register mask is applied. An \c std::runtime_error is thrown if the register cannot be read.
+     *
+     *  \param \c regName Register name
+     *
+     *  \returns \c uint32_t register value
+     */
+     uint32_t readReg(const std::string &regName);
+
+    /*!
+     *  \brief Writes a value to a register. Register mask is applied. An \c std::runtime_error is thrown if the register cannot be read.
+     *
+     *  \param \c regName Register name
+     *  \param \c value Value to write
+     */
+    void writeReg(const std::string &regName, const uint32_t value);
+
+    /*!
      *  \brief Reads a block of values from a contiguous address space.
      *
      *  \param \c regName Register name of the block to be read
@@ -264,14 +272,6 @@ namespace utils {
      *  \param \c nReads number of times to attempt to read regName
      */
     SlowCtrlErrCntVFAT repeatedRegRead(const std::string & regName, const bool breakOnFailure=true, const uint32_t nReads=1000);
-
-    /*!
-     *  \brief Writes a value to a register. Register mask is applied. An \c std::runtime_error is thrown if the register cannot be read.
-     *
-     *  \param \c regName Register name
-     *  \param \c value Value to write
-     */
-    void writeReg(const std::string &regName, const uint32_t value);
 
     /*!
      *  \brief Writes a block of values to a contiguous address space.
