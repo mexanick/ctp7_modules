@@ -92,7 +92,7 @@ TestSources  := $(wildcard $(PackageTestSourceDir)/*.cxx) $(wildcard $(PackageTe
 Dependencies := $(patsubst $(PackageSourceDir)/%.cpp, $(PackageObjectDir)/%.d, $(Sources))
 TargetObjects:= $(patsubst %.d,%.o,$(Dependencies))
 
-TargetLibraries:=memhub utils amc optohybrid vfat3 daq_monitor calibration_routines gbt
+TargetLibraries:=memhub utils amc optohybrid vfat3 daq_monitor calibration_routines gbt expert_tools
 ifeq ($(Arch),x86_64)
 TargetLibraries+=libmemsvc
 else
@@ -222,6 +222,10 @@ calibration_routines: optohybrid vfat3 amc utils
 gbt: utils
 	$(eval export EXTRA_LINKS=$(^:%=-l:%.so))
 	TargetArch=$(TargetArch) $(MAKE) -f ctp7_modules.mk $(PackageLibraryDir)/gbt.so EXTRA_LINKS="$(EXTRA_LINKS)"
+
+expert_tools: utils
+	$(eval export EXTRA_LINKS=$(^:%=-l:%.so))
+	TargetArch=$(TargetArch) $(MAKE) -f ctp7_modules.mk $(PackageLibraryDir)/expert_tools.so EXTRA_LINKS="$(EXTRA_LINKS)"
 
 build: $(TargetLibraries)
 	@echo Executing build stage
