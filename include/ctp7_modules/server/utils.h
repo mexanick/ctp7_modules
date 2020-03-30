@@ -8,6 +8,9 @@
 
 #include <libmemsvc.h>
 
+#include <log4cplus/logger.h>
+#include <log4cplus/loggingmacros.h>
+
 #include <sstream>
 #include <string>
 #include <vector>
@@ -75,6 +78,65 @@ namespace utils {
      * If the file is not found, it defaults to the embedded configuration LOGGING_DEFAULT_CONFIGURATION.
      */
     void initLogging();
+
+    /*!
+     *  \brief Object holding counters of errors encountered during VFAT slow-control transactions
+     */
+    struct SlowCtrlErrCntVFAT
+    {
+      uint32_t crc;           ///< GEM_AMC.SLOW_CONTROL.VFAT3.CRC_ERROR_CNT
+      uint32_t packet;        ///< GEM_AMC.SLOW_CONTROL.VFAT3.PACKET_ERROR_CNT
+      uint32_t bitstuffing;   ///< GEM_AMC.SLOW_CONTROL.VFAT3.BITSTUFFING_ERROR_CNT
+      uint32_t timeout;       ///< GEM_AMC.SLOW_CONTROL.VFAT3.TIMEOUT_ERROR_CNT
+      uint32_t axi_strobe;    ///< GEM_AMC.SLOW_CONTROL.VFAT3.AXI_STROBE_ERROR_CNT
+      uint32_t sum;           ///< Sum of above counters
+      uint32_t nTransactions; ///< GEM_AMC.SLOW_CONTROL.VFAT3.TRANSACTION_CNT
+
+      SlowCtrlErrCntVFAT() {
+        crc = packet = bitstuffing = timeout = axi_strobe = sum = nTransactions = 0;
+      }
+
+      SlowCtrlErrCntVFAT(uint32_t crc, uint32_t packet, uint32_t bitstuffing, uint32_t timeout, uint32_t axi_strobe, uint32_t sum, unsigned nTransactions) :
+      crc(crc), packet(packet), bitstuffing(bitstuffing), timeout(timeout), axi_strobe(axi_strobe), sum(sum), nTransactions(nTransactions)
+      {}
+
+      SlowCtrlErrCntVFAT operator+(const SlowCtrlErrCntVFAT &vfatErrs) const {
+        return SlowCtrlErrCntVFAT(crc+vfatErrs.crc,
+                                  packet+vfatErrs.packet,
+                                  bitstuffing+vfatErrs.bitstuffing,
+                                  timeout+vfatErrs.timeout,
+                                  axi_strobe+vfatErrs.axi_strobe,
+                                  sum+vfatErrs.sum,
+                                  nTransactions+vfatErrs.nTransactions);
+      }
+
+      /*!
+       *  \brief Function to detect if an overflow occurs during an addition operation
+       *         (adapted from https://stackoverflow.com/questions/199333/how-do-i-detect-unsigned-integer-multiply-overflow)
+       *
+       *  \param \c a number to be added to \c b
+       *  \param \c b number to add to \c a
+       *
+       *  \returns \c 0xffffffff in the case an overflow is detected, otherwise \c a+b
+       *
+       */
+      inline uint32_t overflowTest(const uint32_t &a, const uint32_t &b) {
+        const uint32_t overflowTest = a+b;
+        if ((overflowTest-b) != a) {
+          return 0xffffffff;
+        } else {
+          return a+b;
+        }
+      }
+
+      void sumErrors() {
+        sum = overflowTest(sum, crc);
+        sum = overflowTest(sum, packet);
+        sum = overflowTest(sum, bitstuffing);
+        sum = overflowTest(sum, timeout);
+        sum = overflowTest(sum, axi_strobe);
+      }
+    };
 
     /*!
      *  \brief return 1 if the given bit in word is 1 else 0
@@ -163,8 +225,18 @@ namespace utils {
      *  \brief Reads a value from register. Register mask is applied. An \c std::runtime_error is thrown if the register cannot be read.
      *
      *  \param \c regName Register name
+     *
+     *  \returns \c uint32_t register value
      */
-    uint32_t readReg(const std::string &regName);
+     uint32_t readReg(const std::string &regName);
+
+    /*!
+     *  \brief Writes a value to a register. Register mask is applied. An \c std::runtime_error is thrown if the register cannot be read.
+     *
+     *  \param \c regName Register name
+     *  \param \c value Value to write
+     */
+    void writeReg(const std::string &regName, const uint32_t value);
 
     /*!
      *  \brief Reads a block of values from a contiguous address space.
@@ -202,14 +274,6 @@ namespace utils {
     SlowCtrlErrCntVFAT repeatedRegRead(const std::string & regName, const bool breakOnFailure=true, const uint32_t nReads=1000);
 
     /*!
-     *  \brief Writes a value to a register. Register mask is applied. An \c std::runtime_error is thrown if the register cannot be read.
-     *
-     *  \param \c regName Register name
-     *  \param \c value Value to write
-     */
-    void writeReg(const std::string &regName, const uint32_t value);
-
-    /*!
      *  \brief Writes a block of values to a contiguous address space.
      *
      *  \detail Block writes are allowed on 'single' registers, provided:
@@ -241,7 +305,6 @@ namespace utils {
      *  \param \c offset Start writing at an offset from the base address regAddr
      */
     void writeBlock(const uint32_t &regAddr, const uint32_t *values, const uint32_t &size, const uint32_t &offset=0);
-
 }
 
 #endif

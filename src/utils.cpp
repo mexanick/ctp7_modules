@@ -11,6 +11,10 @@
 
 #include "xhal/common/rpc/register.h"
 
+/*
+ * Server methods implementation. These methods can be called at the RPC server side only and are not inteded to be exported as remote calls.
+ */
+
 memsvc_handle_t memsvc;
 
 std::vector<std::string> utils::split(const std::string &s, char delim)
@@ -114,55 +118,6 @@ void utils::update_address_table::operator()(const std::string &at_xml) const
   wtxn.commit();
   LOG4CPLUS_INFO(logger, "COMMIT DB");
   wtxn.abort();
-}
-
-utils::RegInfo utils::readRegFromDB::operator()(const std::string &regName) const
-{
-  auto env = lmdb::env::create();
-  env.set_mapsize(utils::LMDB_SIZE);
-  std::string gem_path       = std::getenv("GEM_PATH");
-  std::string lmdb_data_file = gem_path+"/address_table.mdb";
-  env.open(lmdb_data_file.c_str(), 0, 0664);
-  auto rtxn = lmdb::txn::begin(env, nullptr, MDB_RDONLY);
-  auto dbi  = lmdb::dbi::open(rtxn, nullptr);
-
-  auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("logger"));
-  LOG4CPLUS_INFO(logger, "LMDB ENV OPEN");
-  lmdb::val key;
-  lmdb::val value;
-
-  key.assign(regName.c_str());
-  bool found = dbi.get(rtxn,key,value);
-  if (found) {
-    LOG4CPLUS_INFO(logger, "Key: " + regName + " is found");
-    std::string t_value = std::string(value.data());
-    t_value = t_value.substr(0,value.size());
-    const std::vector<std::string> tmp = split(t_value,'|');
-    const uint32_t raddr = stoull(tmp[0], nullptr, 16);
-    const uint32_t rmask = stoull(tmp[2], nullptr, 16);
-    const uint32_t rsize = stoull(tmp[4], nullptr, 16);
-    const std::string rperm = tmp[1];
-    const std::string rmode = tmp[3];
-
-    const utils::RegInfo regInfo = {
-      .permissions = rperm,
-      .mode        = rmode,
-      .address     = raddr,
-      .mask        = rmask,
-      .size        = rsize
-    };
-
-    LOG4CPLUS_DEBUG(logger, " node " << regName << " properties: " << regInfo);
-
-    rtxn.abort();
-    return regInfo;
-  } else {
-    std::stringstream errmsg;
-    errmsg << "Key: " << regName << " was NOT found!";
-    LOG4CPLUS_ERROR(logger, errmsg.str());
-    rtxn.abort(); // FIXME duplicated! fixed with a `LocalArgs object that is destroyed when going out of scope
-    throw std::runtime_error(errmsg.str());
-  }
 }
 
 uint32_t utils::bitCheck(uint32_t word, int bit)
@@ -356,7 +311,9 @@ uint32_t utils::readBlock(const std::string &regName, uint32_t *result, const ui
                     << "  " << rmode << "  " << rperm);
 
     if (rmask != 0xFFFFFFFF) {
+      // FIXME
       // deny block read on masked register, but what if mask is None?
+      // Adopt the rule that mask None equals to mask == 0xFFFFFFFF?
       std::stringstream errmsg;
       errmsg << "Block read attempted on masked register";
       LOG4CPLUS_ERROR(logger, errmsg.str());
@@ -527,6 +484,69 @@ void utils::writeBlock(const uint32_t &regAddr, const uint32_t *values, const ui
   return;
 }
 
+/*
+ * Common methods implementation. These methods are exported as remote calls.
+ */
+
+utils::RegInfo utils::readRegFromDB::operator()(const std::string &regName) const
+{
+  auto env = lmdb::env::create();
+  env.set_mapsize(utils::LMDB_SIZE);
+  std::string gem_path       = std::getenv("GEM_PATH");
+  std::string lmdb_data_file = gem_path+"/address_table.mdb";
+  env.open(lmdb_data_file.c_str(), 0, 0664);
+  auto rtxn = lmdb::txn::begin(env, nullptr, MDB_RDONLY);
+  auto dbi  = lmdb::dbi::open(rtxn, nullptr);
+
+  auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("logger"));
+  LOG4CPLUS_INFO(logger, "LMDB ENV OPEN");
+  lmdb::val key;
+  lmdb::val value;
+
+  key.assign(regName.c_str());
+  bool found = dbi.get(rtxn,key,value);
+  if (found) {
+    LOG4CPLUS_INFO(logger, "Key: " + regName + " is found");
+    std::string t_value = std::string(value.data());
+    t_value = t_value.substr(0,value.size());
+    const std::vector<std::string> tmp = split(t_value,'|');
+    const uint32_t raddr = stoull(tmp[0], nullptr, 16);
+    const uint32_t rmask = stoull(tmp[2], nullptr, 16);
+    const uint32_t rsize = stoull(tmp[4], nullptr, 16);
+    const std::string rperm = tmp[1];
+    const std::string rmode = tmp[3];
+
+    const utils::RegInfo regInfo = {
+      .permissions = rperm,
+      .mode        = rmode,
+      .address     = raddr,
+      .mask        = rmask,
+      .size        = rsize
+    };
+
+    LOG4CPLUS_DEBUG(logger, " node " << regName << " properties: " << regInfo);
+
+    rtxn.abort();
+    return regInfo;
+  } else {
+    std::stringstream errmsg;
+    errmsg << "Key: " << regName << " was NOT found!";
+    LOG4CPLUS_ERROR(logger, errmsg.str());
+    rtxn.abort(); // FIXME duplicated! fixed with a `LocalArgs object that is destroyed when going out of scope
+    throw std::runtime_error(errmsg.str());
+  }
+}
+
+uint32_t utils::readRemoteReg::operator()(const std::string &regName) const
+{
+  return readReg(regName);
+}
+
+void utils::writeRemoteReg::operator()(const std::string &regName, const uint32_t value) const
+{
+  return writeReg(regName, value);
+}
+
 extern "C" {
     const char *module_version_key = "utils v1.0.1";
     const int module_activity_color = 4;
@@ -544,5 +564,7 @@ extern "C" {
 
         xhal::common::rpc::registerMethod<utils::update_address_table>(modmgr);
         xhal::common::rpc::registerMethod<utils::readRegFromDB>(modmgr);
+        xhal::common::rpc::registerMethod<utils::readRemoteReg>(modmgr);
+        xhal::common::rpc::registerMethod<utils::writeRemoteReg>(modmgr);
     }
 }
