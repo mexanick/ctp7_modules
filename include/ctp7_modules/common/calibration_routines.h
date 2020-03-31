@@ -94,55 +94,30 @@ namespace calibration {
   /*!
    *  \brief Toggles the TTC Generator
    *
-   *  * v3  electronics: enable = true (false) turn on CTP7 internal TTC generator and ignore ttc commands from backplane for this AMC (turn off CTP7 internal TTC generator and take ttc commands from backplane link)
-   *  * v2b electronics: enable = true (false) start (stop) the T1Controller for link ohN
+   *  enable = true (false) turn on CTP7 internal TTC generator and ignore ttc commands from backplane for this AMC (turn off CTP7 internal TTC generator and take ttc commands from backplane link)
    *
-   *
-   *  \param \c ohN OptoHybrid optical link number
    *  \param \c enable See detailed mehod description
    */
   struct ttcGenToggle : xhal::common::rpc::Method
   {
-    void operator()(const uint16_t &ohN, const bool &enable) const;
+    void operator()(const bool &enable) const;
   };
 
   /*!
    *  \brief Configures TTC generator
    *
-   *  - **v3**  electronics behavior:
-   *    * pulseDelay (only for enable = true), delay between CalPulse and L1A
-   *    * L1Ainterval (only for enable = true), how often to repeat signals
-   *    * enable = true (false) turn on CTP7 internal TTC generator and ignore ttc commands from backplane for this AMC (turn off CTP7 internal TTC generator and take ttc commands from backplane link)
-   *  - **v2b** electronics behavior [[deprecated]]:
-   *    * Configure the T1 controller
-   *    * mode:
-   *      * 0 (Single T1 signal),
-   *      * 1 (CalPulse followed by L1A),
-   *      * 2 (pattern)
-   *    * type (only for mode 0, type of T1 signal to send):
-   *      * 0 L1A
-   *      * 1 CalPulse
-   *      * 2 Resync
-   *      * 3 BC0
-   *    * pulseDelay (only for mode 1), delay between CalPulse and L1A
-   *    * L1Ainterval (only for mode 0,1), how often to repeat signals
-   *    * nPulses how many signals to send (0 is continuous)
-   *    * enable = true (false) start (stop) the T1Controller for link ohN
+   *  * pulseDelay (only for enable = true), delay between CalPulse and L1A
+   *  * L1Ainterval (only for enable = true), how often to repeat signals
+   *  * enable = true (false) turn on CTP7 internal TTC generator and ignore ttc commands from backplane for this AMC (turn off CTP7 internal TTC generator and take ttc commands from backplane link)
    *
-   *
-   *  \param \c ohN OptoHybrid optical link number
-   *  \param \c mode T1 controller mode
-   *  \param \c type Type of T1 signal to send
    *  \param \c pulseDelay Delay between CalPulse and L1A
    *  \param \c L1Ainterval How often to repeat signals (only for enable = true)
-   *  \param \c nPulses Number of calibration pulses to generate
    *  \param \c enable If true (false) ignore (take) ttc commands from backplane for this AMC (affects all links)
    */
   struct ttcGenConf : xhal::common::rpc::Method
   {
-    void operator()(const uint16_t &ohN, const uint32_t &mode, const uint32_t &type,
-                    const uint32_t &pulseDelay, const uint32_t &L1Ainterval,
-                    const uint32_t &nPulses, const bool &enable) const;
+    void operator()(const uint32_t &pulseDelay, const uint32_t &L1Ainterval,
+                    const bool &enable) const;
   };
 
   /*!
