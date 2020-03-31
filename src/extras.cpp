@@ -3,166 +3,189 @@
  *  \author Mykhailo Dalchenko <mykhailo.dalchenko@cern.ch>
  */
 
-#include "moduleapi.h"
-//#include <libmemsvc.h>
-#include "memhub.h"
+#include "ctp7_modules/server/memhub.h"
+#include "ctp7_modules/common/utils.h"
+#include "ctp7_modules/server/utils.h"
+
+#include <libmemsvc.h>
+
+#include "xhal/extern/ModuleManager.h"
+
+#include <vector>
+#include <unordered_map>
 
 memsvc_handle_t memsvc; /// \var global memory service handle required for registers read/write operations
 
-/*! \fn void mblockread(const RPCMsg *request, RPCMsg *response)
- *  \brief Sequentially reads a block of values from a contiguous address space.
- *  Register mask is not applied
- *  \param request RPC request message
- *  \param response RPC response message
- */
-void mblockread(const RPCMsg *request, RPCMsg *response) {
-  uint32_t count = request->get_word("count");
-  uint32_t addr  = request->get_word("address");
-  uint32_t data[count];
+namespace extras {
+  /*!
+   *  \brief Sequentially reads a block of values from a contiguous address space.
+   *         Register mask is not applied
+   *
+   *  \throws \c std::runtime_error if the \c memhub_read has an nonzero exit status
+   *
+   *  \param \c addr address of the block to read
+   *  \param \c count how many 32-bit words to read out of the block
+   *
+   *  \returns \c std::vector
+   */
+  std::vector<uint32_t> mblockread(uint32_t const& addr, uint32_t const& count)
+  {
+    auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("main"));
 
-  if (memhub_read(memsvc, addr, count, data) != 0) {
-    response->set_string("error", memsvc_get_last_error(memsvc));
-    LOGGER->log_message(LogManager::INFO, stdsprintf("read memsvc error: %s",
-                                                     memsvc_get_last_error(memsvc)));
+    std::vector<uint32_t> data(count, 0);
+
+    if (memhub_read(memsvc, addr, count, data.data()) != 0) {
+      std::stringstream errmsg;
+      errmsg << "blockread memsvc error: " << memsvc_get_last_error(memsvc);
+      LOG4CPLUS_ERROR(logger, errmsg.str());
+      throw std::runtime_error(errmsg.str());
+    }
+    return data;
+  }
+
+  /*!
+   *  \brief Sequentially reads a block of values from the same raw register address.
+   *         The address specified should behave like a port/FIFO.
+   *         Register mask is not applied.
+   *
+   *  \throws \c std::runtime_error if the \c memhub_read has an nonzero exit status
+   *
+   *  \param \c addr address of the block to read
+   *  \param \c count how many 32-bit words to read out of the block
+   *
+   *  \returns \c std::vector
+   */
+  std::vector<uint32_t> mfiforead(uint32_t const& addr, uint32_t const& count)
+  {
+    auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("main"));
+
+    std::vector<uint32_t> data(count, 0);
+
+    for (auto && val : data) {
+      if (memhub_read(memsvc, addr, 1, &val) != 0) {
+        std::stringstream errmsg;
+        errmsg << "fiforead memsvc error: " << memsvc_get_last_error(memsvc);
+        LOG4CPLUS_ERROR(logger, errmsg.str());
+        throw std::runtime_error(errmsg.str());
+      }
+    }
+    return data;
+  }
+
+  /*!
+   *  \brief Reads a list of raw addresses
+   *
+   *  \throws \c std::runtime_error if the \c memhub_read has an nonzero exit status
+   *
+   *  \param \c reglist list of addresses to read
+   *
+   *  \returns \c std::vector list of register values read
+   */
+  std::vector<uint32_t> mlistread(std::vector<uint32_t> const& reglist)
+  {
+    auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("main"));
+
+    std::vector<uint32_t> data(reglist.size(), 0);
+
+    for (size_t i = 0; i < reglist.size(); ++i) {
+      if (memhub_read(memsvc, reglist.at(i), 1, &data.at(i)) != 0) {
+        std::stringstream errmsg;
+        errmsg << "listread memsvc error: " << memsvc_get_last_error(memsvc);
+        LOG4CPLUS_ERROR(logger, errmsg.str());
+        throw std::runtime_error(errmsg.str());
+      }
+    }
+    return data;
+  }
+
+  /*!
+   *  \brief Writes a block of values to a contiguous memory block
+   *
+   *  \throws \c std::runtime_error if the \c memhub_write has an nonzero exit status
+   *
+   *  \param \c addr address of the start of the block
+   *  \param \c data list of values to write into the block consecutively
+   */
+  void mblockwrite(uint32_t const& addr, std::vector<uint32_t> const& data)
+  {
+    auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("main"));
+
+    if (memhub_write(memsvc, addr, data.size(), data.data()) != 0) {
+      std::stringstream errmsg;
+      errmsg << "blockwrite memsvc error: " << memsvc_get_last_error(memsvc);
+      LOG4CPLUS_ERROR(logger, errmsg.str());
+      throw std::runtime_error(errmsg.str());
+    }
     return;
   }
-  response->set_word_array("data", data, count);
-}
 
-/*! \fn void mfiforead(const RPCMsg *request, RPCMsg *response)
- *  \brief Sequentially reads a block of values from the same raw register address.
- *  Register mask is not applied
- *  The address acts like a port/FIFO
- *  \param request RPC request message
- *  \param response RPC response message
- */
-void mfiforead(const RPCMsg *request, RPCMsg *response) {
-  uint32_t count = request->get_word("count");
-  uint32_t addr  = request->get_word("address");
-  uint32_t data[count];
 
-  for (unsigned int i=0; i<count; i++){
-    if (memhub_read(memsvc, addr, 1, &data[i]) != 0) {
-      response->set_string("error", memsvc_get_last_error(memsvc));
-      LOGGER->log_message(LogManager::INFO, stdsprintf("read memsvc error: %s",
-                                                       memsvc_get_last_error(memsvc)));
-      return;
+  /*!
+   *  \brief Writes a set of values to an address that acts as a port or FIFO
+   *
+   *  \throws \c std::runtime_error if the \c memhub_write has an nonzero exit status
+   *
+   *  \param \c addr address of the FIFO port
+   *  \param \c data list of values to write into the block consecutively
+   */
+  void mfifowrite(uint32_t const& addr, std::vector<uint32_t> const& data)
+  {
+    auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("main"));
+
+    for (auto && writeval : data) {
+      if (memhub_write(memsvc, addr, 1, &writeval) != 0) {
+        std::stringstream errmsg;
+        errmsg << "fifowrite memsvc error: " << memsvc_get_last_error(memsvc);
+        LOG4CPLUS_ERROR(logger, errmsg.str());
+        throw std::runtime_error(errmsg.str());
+      }
     }
-  }
-  response->set_word_array("data", data, count);
-}
-
-/*! \fn void mlistread(const RPCMsg *request, RPCMsg *response)
- *  \brief Reads a list of raw addresses
- *  \param request RPC request message
- *  \param response RPC response message
- */
-void mlistread(const RPCMsg *request, RPCMsg *response) {
-  uint32_t count = request->get_word("count");
-  uint32_t addr[count];
-  request->get_word_array("addresses", addr);
-  uint32_t data[count];
-
-  for (unsigned int i=0; i<count; i++){
-    if (memhub_read(memsvc, addr[i], 1, &data[i]) != 0) {
-      response->set_string("error", memsvc_get_last_error(memsvc));
-      LOGGER->log_message(LogManager::INFO, stdsprintf("read memsvc error: %s",
-                                                       memsvc_get_last_error(memsvc)));
-      return;
-    }
-  }
-  response->set_word_array("data", data, count);
-}
-
-/*! \fn void mblockwrite(const RPCMsg *request, RPCMsg *response)
- *  \brief writes a block of values to a contiguous memory block
- *  \param request RPC request message
- *  \param response RPC response message
- */
-void mblockwrite(const RPCMsg *request, RPCMsg *response) {
-  uint32_t count = request->get_word_array_size("data");
-  uint32_t addr  = request->get_word("address");
-  uint32_t data[count];
-  request->get_word_array("data", data);
-
-  if (memhub_write(memsvc, addr, count, data) != 0) {
-    response->set_string("error", memsvc_get_last_error(memsvc));
-    LOGGER->log_message(LogManager::ERROR, stdsprintf("blockwrite memsvc error: %s",
-                                                      memsvc_get_last_error(memsvc)));
-    // needs better error handling
     return;
   }
-  // return type?
-  response->set_word_array("data", data, count);
-}
 
+  /*!
+   *  \brief Writes a set of values to a list of addresses
+   *
+   *  \throws \c std::runtime_error if the \c memhub_write has an nonzero exit status
+   *
+   *  \param \c reglist map between address and value to be written
+   */
+  void mlistwrite(const std::unordered_map<uint32_t, uint32_t> &regvals)
+  {
+    auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("main"));
 
-/*! \fn void mfifowrite(const RPCMsg *request, RPCMsg *response)
- *  \brief writes a set of values to an address that acts as a port or FIFO
- *  \param request RPC request message
- *  \param response RPC response message
- */
-void mfifowrite(const RPCMsg *request, RPCMsg *response) {
-  uint32_t count = request->get_word_array_size("data");
-  uint32_t addr  = request->get_word("address");
-  uint32_t data[count];
-  request->get_word_array("data", data);
-
-  for (unsigned int i=0; i<count; i++){
-    if (memhub_write(memsvc, addr, 1, &data[i]) != 0) {
-      response->set_string("error", memsvc_get_last_error(memsvc));
-      LOGGER->log_message(LogManager::ERROR, stdsprintf("fifowrite memsvc error: %s",
-                                                        memsvc_get_last_error(memsvc)));
-      // needs better error handling
-      return;
+    for (auto && regval : regvals){
+      if (memhub_write(memsvc, regval.first, 1, &(regval.second)) != 0) {
+        std::stringstream errmsg;
+        errmsg << "listwrite memsvc error: " << memsvc_get_last_error(memsvc);
+        LOG4CPLUS_ERROR(logger, errmsg.str());
+        throw std::runtime_error(errmsg.str());
+      }
     }
+    return;
   }
-  // return type?
-  response->set_word_array("data", data, count);
+
 }
+// extern "C" {
+//   const char *module_version_key = "extras v1.0.1";
+//   const int module_activity_color = 4;
 
-/*! \fn void mlistwrite(const RPCMsg *request, RPCMsg *response)
- *  \brief writes a set of values to a list of addresses
- *  \param request RPC request message
- *  \param response RPC response message
- */
-void mlistwrite(const RPCMsg *request, RPCMsg *response) {
-  // implicit expectation that data and addresses will be the same size
-  uint32_t count = request->get_word_array_size("data");
-  uint32_t addr[count];
-  request->get_word_array("addresses", addr);
-  uint32_t data[count];
-  request->get_word_array("data", data);
+//   void module_init(ModuleManager *modmgr)
+//   {
+//     utils::initLogging();
 
-  for (unsigned int i=0; i<count; i++){
-    if (memhub_write(memsvc, addr[i], 1, &data[i]) != 0) {
-      response->set_string("error", memsvc_get_last_error(memsvc));
-      LOGGER->log_message(LogManager::ERROR, stdsprintf("listwrite memsvc error: %s",
-                                                        memsvc_get_last_error(memsvc)));
-      // needs better error handling
-      return;
-    }
-  }
-  // return type?
-  response->set_word_array("data", data, count);
-}
+//     if (memhub_open(&memsvc) != 0) {
+//       auto logger = log4cplus::Logger::getInstance(LOG4CPLUS_TEXT("main"));
+//       LOG4CPLUS_ERROR(logger, "Unable to connect to memory service: " << memsvc_get_last_error(memsvc));
+//       LOG4CPLUS_ERROR(logger, "Unable to load module");
+//       return;
+//     }
 
-
-extern "C" {
-  const char *module_version_key = "extras v1.0.1";
-  int module_activity_color = 4;
-  void module_init(ModuleManager *modmgr) {
-    if (memhub_open(&memsvc) != 0) {
-      LOGGER->log_message(LogManager::ERROR, stdsprintf("Unable to connect to memory service: %s",
-                                                        memsvc_get_last_error(memsvc)));
-      LOGGER->log_message(LogManager::ERROR, "Unable to load module");
-      return; // Do not register our functions, we depend on memsvc.
-    }
-    modmgr->register_method("extras", "fiforead",  mfiforead);
-    modmgr->register_method("extras", "blockread", mblockread);
-    modmgr->register_method("extras", "listread",  mlistread);
-    modmgr->register_method("extras", "fifowrite",  mfifowrite);
-    modmgr->register_method("extras", "blockwrite", mblockwrite);
-    modmgr->register_method("extras", "listwrite",  mlistwrite);
-  }
-}
+//     xhal::common::rpc::registerMethod<extras::mfiforead>(modmgr);
+//     xhal::common::rpc::registerMethod<extras::mblockread>(modmgr);
+//     xhal::common::rpc::registerMethod<extras::mlistread>(modmgr);
+//     xhal::common::rpc::registerMethod<extras::mfifowrite>(modmgr);
+//     xhal::common::rpc::registerMethod<extras::mblockwrite>(modmgr);
+//     xhal::common::rpc::registerMethod<extras::mlistwrite>(modmgr);
+//   }
+// }

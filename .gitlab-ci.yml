@@ -1,0 +1,346 @@
+## GitLab Continuous Integration YAML file
+
+## ------------------- used variables: ------------------- ##
+  # https://gitlab.cern.ch/help/ci/variables/README.md
+  # CI_COMMIT_TAG
+  # CI_COMMIT_REF_NAME
+  # CI_COMMIT_SHA
+  # CI_MERGE_REQUEST_TARGET_BRANCH_NAME
+  # CI_MERGE_REQUEST_TARGET_BRANCH_SHA
+  # GITLAB_USER_EMAIL
+  # GITLAB_USER_ID
+  # GITLAB_USER_LOGIN
+  # GITLAB_USER_NAME
+
+## ------------------- used secure variables: ------------------- ##
+  # EOS_ACCOUNT_USERNAME: Username of to write in the EOS folder whose path is EOS_PATH
+  # EOS_ACCOUNT_PASSWORD: Account password
+  # KRB_PASSWORD: Kerberos account password
+  # KRB_USERNAME: Kerberos account username
+  # GPG_SIGNING_KEY_PRIV: GPG private key for signing
+  # GPG_PASSPHRASE: GPG key passphrase for signing
+  # CI_DEPLOY_USER:
+  # CI_DEPLOY_PASSWORD:
+
+## ------------------- Stage definitions ------------------- ##
+stages:
+  - compile   # compile the sources, make the docs (if requested)
+  - docs      # compile the docs (if requested)
+  - package   # build the RPMs
+  - test      # test the packages (install, run basic tests)
+  - publish   # publish the RPMs and docs
+  - release   # create release page
+
+## ------------------- Define up anchors for various tasks, shared across all jobs utilizing them ------------------- ##
+.common_variables: &common_variables
+  EOS_SITE_URL:           https://cmsgemdaq.cern.ch/cmsgemdaq
+  BUILD_HOME:             /builds/${CI_PROJECT_NAMESPACE}
+  XDAQ_OS:                linux
+  XDAQ_ROOT:              /opt/xdaq
+  LD_LIBRARY_PATH:        /opt/xdaq/lib:/opt/xhal/lib:/opt/reedmuller/lib:/opt/wiscrpcsvc/lib
+  PACKAGE_NAME:           ${CI_PROJECT_NAME}
+  ARTIFACTS_DIR:          artifacts
+  XILINX_SDK_PATH:        /data/bigdisk/sw/Xilinx/SDK
+  GIT_SUBMODULE_STRATEGY: normal
+
+variables: *common_variables
+
+## ------------------- Set up images for specified job types ------------------- #
+.slc6setup: &slc6setup
+  image: gitlab-registry.cern.ch/cms-gem-daq-project/gemdaq_ci_worker/extrapy/devtoolsroot:slc6
+
+.cc7setup: &cc7setup
+  image: gitlab-registry.cern.ch/cms-gem-daq-project/gemdaq_ci_worker/extrapy/devtoolsroot:cc7-xdaq14
+  # image: gitlab-registry.cern.ch/cms-gem-daq-project/gemdaq_ci_worker/extrapy/devtoolsroot:cc7-xdaq14-6
+  # image: gitlab-registry.cern.ch/cms-gem-daq-project/gemdaq_ci_worker/extrapy/devtoolsroot:cc7-xdaq15
+
+.cc8setup: &cc8setup
+  image: gitlab-registry.cern.ch/cms-gem-daq-project/gemdaq_ci_worker/extrapy/devtoolsroot:cc8
+  # image: gitlab-registry.cern.ch/cms-gem-daq-project/gemdaq_ci_worker/extrapy/devtoolsroot:cc8:python2
+  # image: gitlab-registry.cern.ch/cms-gem-daq-project/gemdaq_ci_worker/extrapy/devtoolsroot:cc8:python3
+
+### ------------------- Shared setup between stages ------------------- ###
+.common_setup: &common_setup |-
+  mkdir -p ${ARTIFACTS_DIR}
+  pip install -I --user "pip" "importlib" "codecov" "setuptools<38.2" "sphinxcontrib-napoleon==0.2.9"
+  sudo yum install -y wiscrpcsvc\* --enablerepo=gemos*
+  sudo yum install -y reedmuller\* --enablerepo=gemos*
+  # for building releases, need to ensure that we're using the correct stream...
+  # for a generic build, this could be done against a testing stream
+  # sudo yum install -y xhal\*     --enablerepo=gemos* ## get specific version of xhal to test against
+  . /opt/rh/devtoolset-8/enable
+
+.common_zynq_setup: &common_zynq_setup |-
+  sudo yum install -y gem-peta-stage-ctp7 --enablerepo=gemos*
+  sudo yum install -y lmdb\*
+  sudo /opt/arm/getarm.sh 4.9-2017.01
+  export PATH=/opt/arm/gcc-linaro-4.9.4-2017.01-x86_64_arm-linux-gnueabihf/bin:${PATH}
+  # source ${XILINX_SDK_PATH}/2016.2/settings64.sh
+
+.retry_settings: &retry_settings
+  retry:
+    max: 2
+    when:
+      - runner_system_failure
+      - stuck_or_timeout_failure
+
+.common_cache: &common_cache
+  untracked: true
+  paths:
+    - ~/.cache/pip
+
+.common_artifacts: &common_artifacts
+  name: "$CI_JOB_NAME-$CI_COMMIT_REF_SLUG"
+  expire_in: 1d
+  paths:
+    - ${ARTIFACTS_DIR}
+
+##### ------------------- Run compilation ------------------- #####
+.compile_artifacts: &compile_artifacts
+  untracked: true
+  <<: *common_artifacts
+
+.touch_compile_artifacts: &touch_compile_artifacts |-
+  find ./ -type f -name '*.d' -print0 -exec touch {} \;
+  find ./ -type f -name '*.o' -print0 -exec touch {} \;
+  find ./ -type f -name '*.so' -print0 -exec touch {} \;
+
+# .before_compile: &before_compile |-
+
+.compile_common: &compile_common
+  only:
+    - /^issue.*$/
+    - /^hotfix.*$/
+    - /^release.*$/
+    - /^feature.*$/
+    - /^citest.*$/
+    - /^develop$/
+    - /^master$/
+    - merge_requests
+    - tags
+  tags:
+  stage: compile
+  before_script:
+    - *common_setup
+    - *common_zynq_setup
+  script:
+    - make all -j8
+  after_script:
+    - ls -la ${ARTIFACTS_DIR}
+  artifacts:
+    name: ${CI_JOB_STAGE}
+    <<: *compile_artifacts
+
+compile:cc7:
+  <<: *cc7setup
+  <<: *compile_common
+  environment:
+  variables:
+  cache:
+
+##### ------------------- Generate docs ------------------- #####
+.docs_artifacts: &docs_artifacts
+  untracked: true
+  <<: *common_artifacts
+
+.touch_docs_artifacts: &touch_docs_artifacts |-
+  # find ./doc/html -type f -print0 -exec touch {} \;
+  # find ./doc/latex -type f -print0 -exec touch {} \;
+
+# generate docs
+docs:
+  <<: *cc7setup
+  stage: compile
+  only:
+    - /^release.*$/
+    - /^feature.*$/
+    - /^citest.*$/
+    - /^develop$/
+    - /^master$/
+    - merge_requests
+    - tags
+  dependencies:
+  before_script:
+  script:
+    - make doc
+  after_script:
+    - |
+      mkdir -p ${ARTIFACTS_DIR}/api
+      mv -t ${ARTIFACTS_DIR}/api/ doc/build/html/*
+  artifacts:
+    name: ${CI_JOB_STAGE}
+    <<: *docs_artifacts
+  coverage: '/Documentation coverage: \d+\.\d+/'
+
+##### ------------------- Run tests using the compiled binaries ------------------- #####
+.test_artifacts: &test_artifacts
+  untracked: true
+  <<: *common_artifacts
+  expire_in: 1w
+
+.before_test: &before_test |-
+  *common_setup
+
+.before_abi_check: &before_abi_check |-
+  sudo yum install -y abi-compliance-checker abi-dumper
+
+# run tests using the binary built before
+test:cc7:
+  <<: *cc7setup
+  stage: test
+  tags:
+  dependencies:
+    - compile:cc7
+  before_script:
+    - *common_setup
+  script:
+    - echo ./runmytests.sh
+  after_script:
+    - 'echo "FIXME: test summary"'
+  coverage: '/Test coverage: \d+\.\d+/'
+
+test:abi:cc7:
+  <<: *cc7setup
+  stage: test
+  tags:
+  only:
+    - merge_requests
+  dependencies:
+    - compile:cc7
+  before_script:
+    - *common_setup
+    - *common_zynq_setup
+    - *before_abi_check
+  script:
+    - make checkabi
+  allow_failure: true
+  after_script:
+    - find . -type d -iname compat_reports -print0 -exec tar cjf ${CI_PROJECT_NAME}_mr${CI_MERGE_REQUEST_ID}_abi_compat.tbz2 {} \+
+    - 'echo "FIXME: API/ABI summary"'
+  artifacts:
+    name: ${CI_JOB_STAGE}
+    <<: *test_artifacts
+  coverage: '/Test coverage: \d+\.\d+/'
+
+##### ------------------- Package generated files into RPMs and tarballs ------------------- #####
+.package_artifacts: &package_artifacts
+  untracked: true
+  <<: *common_artifacts
+
+.touch_package_artifacts: &touch_package_artifacts |-
+  find ./ -type f -wholename '*/rpm/ctp7_modules*.tbz2' -print0 -exec touch {} \;
+  find ./ -type f -wholename '*/rpm/ctp7_modules.spec' -print0 -exec touch {} \;
+  find ./ -type f -wholename '*/rpm/ctp7_modules*.src.rpm' -print0 -exec touch {} \;
+  find ./ -type f -wholename '*/rpm/ctp7_modules*.arm*.rpm' -print0 -exec touch {} \;
+  find ./ -type f -wholename '*/rpm/ctp7_modules*.x86_64.rpm' -print0 -exec touch {} \;
+
+.before_package: &before_package |-
+  eval `set | egrep '^(CI|GIT)' | awk -F= '{ print "export " $1 }'`
+  eval `set | egrep '^(BUILD|REL|PACK|ARTI|XDAQ|CMS|LD)' | awk -F= '{ print "export " $1 }'`
+
+.package_common: &package_common
+  stage: package
+  before_script:
+    - *common_setup
+    - *common_zynq_setup
+    - *before_package
+  script:
+    ## Ensure compile artifacts are more recent than the checkout
+    - *touch_compile_artifacts
+    - *touch_docs_artifacts
+    - make rpm
+  after_script:
+  artifacts:
+    name: ${CI_JOB_STAGE}
+    <<: *package_artifacts
+
+# generate RPMs
+package:cc7:
+  <<: *cc7setup
+  only:
+    - /^release.*$/
+    - /^feature.*$/
+    - /^citest.*$/
+    - /^develop$/
+    - /^master$/
+    - merge_requests
+    - tags
+    # - triggers            ## should go into releases/'testing' or unstable?
+    # - chat                ## should go into releases/'testing' or unstable?
+    # - api                 ## should go into releases/'testing' or unstable?
+  tags:
+  dependencies:
+    - compile:cc7
+    - docs
+  <<: *package_common
+
+##### ------------------- Publish RPMs, docs, and tarballs ------------------- #####
+.publish_variables: &publish_variables
+  EOS_BASE_WEB_DIR:   "/eos/project/c/cmsgemdaq/www/ci-test"
+  EOS_COMMON_WEB_DIR: "cmsgemdaq"
+  EOS_DOC_NAME:       "api"
+  EOS_REPO_NAME:      "repos"
+  EOS_SITE_WEB_DIR:   "${EOS_BASE_WEB_DIR}/${CI_PROJECT_NAME}"
+  EOS_SW_DIR:         "sw/gemos"
+  EOS_DOCS_DIR:       "docs/${CI_PROJECT_NAME}"
+  EOS_UNSTABLE_DIR:   "unstable"
+  EOS_RELEASE_DIR:    "releases"
+
+.before_publish: &before_publish |-
+  sudo yum install -y rpm-sign
+
+.publish_common: &publish_common
+  <<: *cc7setup
+  stage: publish
+  variables: *publish_variables
+  before_script:
+    - *common_setup
+    - *common_zynq_setup
+    - *before_publish
+  script:
+    - 'echo "FIXME: github_changelog_generator"'
+    - 'echo "FIXME: cp CHANGELOG.md ${ARTIFACTS_DIR}"'
+    - *touch_compile_artifacts
+    - *touch_docs_artifacts
+    - *touch_package_artifacts
+    - make release
+    - cp -rfp release/* ${ARTIFACTS_DIR}
+    - ${BUILD_HOME}/${CI_PROJECT_NAME}/config/ci/publish_eos.sh
+    # - push python packages to pypi/conda
+    # - push RPMs to packagecloud.io
+    # - push RPMs to gitlab yum repo, a la xDAQ?
+    # - push sphinx/rst/md/rtd docs to readthedocs.io
+    # - push sphinx/rst/md/rtd docs to $EOS_WEB_DIR/docs/${fulltag}, update doc main page index
+
+publish:
+  <<: *publish_common
+  only:
+    - /^release.*$/@cms-gem-daq-project/ctp7_modules
+    - /^feature.*$/@cms-gem-daq-project/ctp7_modules
+    - /^citest.*$/@cms-gem-daq-project/ctp7_modules
+    - /^develop$/@cms-gem-daq-project/ctp7_modules
+    - /^master$/@cms-gem-daq-project/ctp7_modules
+    - merge_requests@cms-gem-daq-project/ctp7_modules
+    - tags@cms-gem-daq-project/ctp7_modules
+  tags:
+  dependencies:
+    - package:cc7
+  after_script:
+    - 'echo "FIXME: github_changelog_generator"'
+    - 'echo "FIXME: generate_release_notes.sh"'
+    # - notify mattermost
+    # - send email
+    # - generate_release.sh pre
+
+release:
+  only:
+    - tags@cms-gem-daq-project/ctp7_modules
+  dependencies:
+    - publish
+  stage: release
+  script:
+    - 'echo "FIXME: github_changelog_generator"'
+    - 'echo "FIXME: generate_release_notes.sh"'
+    # - notify mattermost
+    # - send email
+    # - generate_release.sh pre
