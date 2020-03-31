@@ -92,7 +92,7 @@ TestSources  := $(wildcard $(PackageTestSourceDir)/*.cxx) $(wildcard $(PackageTe
 Dependencies := $(patsubst $(PackageSourceDir)/%.cpp, $(PackageObjectDir)/%.d, $(Sources))
 TargetObjects:= $(patsubst %.d,%.o,$(Dependencies))
 
-TargetLibraries:=memhub memory utils extras amc optohybrid vfat3 daq_monitor calibration_routines gbt
+TargetLibraries:=memhub utils amc optohybrid vfat3 daq_monitor calibration_routines gbt
 ifeq ($(Arch),x86_64)
 TargetLibraries+=libmemsvc
 else
@@ -191,10 +191,6 @@ endif
 	$(eval export EXTRA_LINKS=-lmemsvc)
 	TargetArch=$(TargetArch) $(MAKE) -f ctp7_modules.mk $(PackageLibraryDir)/memhub.so EXTRA_LINKS="$(EXTRA_LINKS)"
 
-memory: memhub
-	$(eval export EXTRA_LINKS=$(^:%=-l:%.so))
-	TargetArch=$(TargetArch) $(MAKE) -f ctp7_modules.mk $(PackageLibraryDir)/memory.so EXTRA_LINKS="$(EXTRA_LINKS)"
-
 optical: memhub
 	$(eval export EXTRA_LINKS=$(^:%=-l:%.so))
 	TargetArch=$(TargetArch) $(MAKE) -f ctp7_modules.mk $(PackageLibraryDir)/optical.so EXTRA_LINKS="$(EXTRA_LINKS)"
@@ -203,27 +199,23 @@ utils: memhub
 	$(eval export EXTRA_LINKS=$(^:%=-l:%.so))
 	TargetArch=$(TargetArch) $(MAKE) -f ctp7_modules.mk $(PackageLibraryDir)/utils.so EXTRA_LINKS="$(EXTRA_LINKS)"
 
-extras: memhub utils
-	$(eval export EXTRA_LINKS=$(^:%=-l:%.so))
-	TargetArch=$(TargetArch) $(MAKE) -f ctp7_modules.mk $(PackageLibraryDir)/extras.so EXTRA_LINKS="$(EXTRA_LINKS)"
-
-amc: extras utils
+amc: utils
 	$(eval export EXTRA_LINKS=$(^:%=-l:%.so))
 	TargetArch=$(TargetArch) $(MAKE) -f ctp7_modules.mk $(PackageLibraryDir)/amc.so EXTRA_LINKS="$(EXTRA_LINKS)"
 
-daq_monitor: amc extras utils
+daq_monitor: amc utils
 	$(eval export EXTRA_LINKS=$(^:%=-l:%.so))
 	TargetArch=$(TargetArch) $(MAKE) -f ctp7_modules.mk $(PackageLibraryDir)/daq_monitor.so EXTRA_LINKS="$(EXTRA_LINKS)"
 
-vfat3: optohybrid amc extras utils
+vfat3: optohybrid amc utils
 	$(eval export EXTRA_LINKS=$(^:%=-l:%.so) -lreedmuller)
 	TargetArch=$(TargetArch) $(MAKE) -f ctp7_modules.mk $(PackageLibraryDir)/vfat3.so EXTRA_LINKS="$(EXTRA_LINKS)"
 
-optohybrid: amc extras utils
+optohybrid: amc utils
 	$(eval export EXTRA_LINKS=$(^:%=-l:%.so))
 	TargetArch=$(TargetArch) $(MAKE) -f ctp7_modules.mk $(PackageLibraryDir)/optohybrid.so EXTRA_LINKS="$(EXTRA_LINKS)"
 
-calibration_routines: optohybrid vfat3 amc extras utils
+calibration_routines: optohybrid vfat3 amc utils
 	$(eval export EXTRA_LINKS=$(^:%=-l:%.so))
 	TargetArch=$(TargetArch) $(MAKE) -f ctp7_modules.mk $(PackageLibraryDir)/calibration_routines.so EXTRA_LINKS="$(EXTRA_LINKS)"
 
